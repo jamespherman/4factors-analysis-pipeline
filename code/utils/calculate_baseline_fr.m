@@ -1,75 +1,95 @@
-function baseline_frs = calculate_baseline_fr(session_data)
-% calculate_baseline_fr - Computes the average baseline firing rate for neurons.
+function baseline_frs = calculate_baseline_fr(session_data, neuron_ids)
+% CALCULATE_BASELINE_FR Computes mean baseline firing rate for gSac_4factors task.
 %
-% This function calculates the firing rate for each neuron during a
-% predefined baseline period, averaged across all valid trials.
+%   This function calculates a single, average baseline firing rate for each
+%   specified neuron. The calculation is based exclusively on the baseline
+%   periods of trials belonging to the 'gSac_4factors' task. The baseline
+%   period for each trial is defined as the interval between the 'fixAq'
+%   (fixation acquired) and 'targOn' (target onset) events.
 %
-% INPUTS:
-%   session_data - A struct containing session-specific data. It must include:
-%                  - nClusters: The number of neurons.
-%                  - spikes.times: A cell array of spike timestamps for each neuron.
-%                  - trials.targetOnTime: A vector of target onset times for each trial.
+%   Usage:
+%   baseline_frs = calculate_baseline_fr(session_data, neuron_ids)
 %
-% OUTPUT:
-%   baseline_frs - A vector (nNeurons x 1) containing the average baseline
-%                  firing rate for each neuron in spikes/sec.
+%   Inputs:
+%   session_data - The main data struct for a session, containing trial
+%                  information, event times, and spike data.
+%   neuron_ids   - A numeric vector of cluster_ids for which to calculate
+%                  the baseline firing rate.
+%
+%   Outputs:
+%   baseline_frs - A column vector of the same length as neuron_ids,
+%                  containing the mean baseline firing rate for each neuron
+%                  in spikes per second.
 %
 
-% --- Setup ---
-nNeurons = session_data.nClusters;
-spike_times_all = session_data.spikes.times;
+% --- 1. Initialize Task Codes ---
+% Get the standardized task code definitions.
+codes = utils.initCodes();
 
-% Assumption: Trial event data is stored in a 'trials' sub-struct.
-% This may need to be adjusted if the final data structure is different.
-if isfield(session_data, 'trials') && isfield(session_data.trials, 'targetOnTime')
-    target_on_times = session_data.trials.targetOnTime;
-else
-    % Fallback for gsac_data structure compatibility
-    target_on_times = session_data.targetOnTime;
+% --- 2. Filter for gSac_4factors Trials ---
+% Create a logical index to identify trials for the gSac_4factors task.
+gSac_trials_idx = session_data.trialInfo.taskCode == ...
+    codes.uniqueTrialCode_gSac_4factors;
+
+% Check if any trials for the specified task were found.
+if sum(gSac_trials_idx) == 0
+    warning('No trials found for the gSac_4factors task. Returning NaNs.');
+    baseline_frs = nan(length(neuron_ids), 1);
+    return;
 end
 
+% --- 3. Subset Relevant Data ---
+% Use the logical index to filter trial-based event time vectors.
+fixAq_times = session_data.eventTimes.fixAq(gSac_trials_idx);
+targOn_times = session_data.eventTimes.targOn(gSac_trials_idx);
 
-% --- Define Baseline Period ---
-% We define the baseline period as the 100ms window immediately preceding
-% the target onset on each trial.
-baseline_start_offset = -0.100; % 100 ms before target onset
-baseline_end_offset   = 0.000;  % at target onset
-baseline_duration_sec = baseline_end_offset - baseline_start_offset; % should be 0.1
+% --- 4. Define Baseline Period & Calculate Durations ---
+% The baseline period is the interval [fixAq_times, targOn_times).
+% Calculate the duration of each baseline period.
+baseline_durations = targOn_times - fixAq_times;
 
-% --- Calculate Firing Rates ---
-baseline_frs = zeros(nNeurons, 1);
-valid_trials = ~isnan(target_on_times);
-nValidTrials = sum(valid_trials);
+% --- 5. Iterate Through Neurons & Calculate Rates ---
+% Initialize the output vector with NaNs.
+baseline_frs = nan(length(neuron_ids), 1);
 
-if nValidTrials == 0
-    fprintf('WARNING in calculate_baseline_fr: No valid trials found.\n');
-    return; % Returns a vector of zeros
-end
+% Loop through each requested neuron_id.
+for i = 1:length(neuron_ids)
+    neuron_id = neuron_ids(i);
 
-% Total duration across all valid trials
-total_baseline_duration = nValidTrials * baseline_duration_sec;
+    % Find the index corresponding to the neuron_id in the session_data.
+    % Assuming session_data.spikes.cluster_id is a list of all neuron ids.
+    neuron_idx = find(session_data.spikes.cluster_id == neuron_id);
 
-for i_neuron = 1:nNeurons
-    neuron_spike_times = spike_times_all{i_neuron};
-    total_spike_count = 0;
-
-    % Iterate through only the valid trials
-    for i_trial = find(valid_trials)' % Loop through indices of valid trials
-
-        event_time = target_on_times(i_trial);
-        start_time = event_time + baseline_start_offset;
-        end_time   = event_time + baseline_end_offset;
-
-        % Count spikes within the baseline window for this trial
-        spike_count_trial = sum(neuron_spike_times >= start_time & neuron_spike_times < end_time);
-        total_spike_count = total_spike_count + spike_count_trial;
+    if isempty(neuron_idx)
+        warning('Neuron ID %d not found in session_data. Skipping.', neuron_id);
+        continue;
     end
 
-    % Calculate average firing rate for this neuron
-    if total_baseline_duration > 0
-        baseline_frs(i_neuron) = total_spike_count / total_baseline_duration;
-    else
-        baseline_frs(i_neuron) = 0; % Should not happen if nValidTrials > 0
+    % Get all spike times for the current neuron.
+    spike_times = session_data.spikes.times{neuron_idx};
+
+    % Initialize array to store firing rates for each trial for this neuron.
+    trial_rates = [];
+
+    % Loop through each trial in the subset.
+    for j = 1:length(fixAq_times)
+        start_time = fixAq_times(j);
+        end_time = targOn_times(j);
+        duration = baseline_durations(j);
+
+        % Ensure the duration is positive to avoid division by zero.
+        if duration > 0
+            % Count spikes that fall within the baseline window [start, end).
+            spike_count = sum(spike_times >= start_time & spike_times < end_time);
+
+            % Calculate firing rate for this trial and store it.
+            trial_rates(end+1) = spike_count / duration;
+        end
+    end
+
+    % Calculate the mean of the trial-by-trial rates for the current neuron.
+    if ~isempty(trial_rates)
+        baseline_frs(i) = mean(trial_rates, 'omitnan');
     end
 end
 
