@@ -37,7 +37,16 @@ codes.uniqueTaskCode_tod        	= 32008;
 codes.uniqueTaskCode_scd        	= 32009;
 codes.uniqueTaskCode_nfl        	= 32010;
 codes.uniqueTaskCode_gSac_jph  		= 32011;
-codes.uniqueTaskCode_gSac_contrast  	= 32012;
+codes.uniqueTaskCode_gSac_contrast  = 32012;
+codes.uniqueTaskCode_seansFirstTask = 32013;
+codes.uniqueTaskCode_tokens         = 32014;
+codes.uniqueTaskCode_gSac_4factors  = 32015;
+
+%% unique codes that are internal to the 'classyStrobe' function class
+% (see pds.classyStrobe.m for more details)
+ss                  = pds.classyStrobe;
+codes.isCell        = ss.internalStrobeCodes.isCell;
+codes.cellLength    = ss.internalStrobeCodes.cellLength;
 
 
 %% currently using fst codse...
@@ -82,6 +91,9 @@ codes.nonStart              = 22004;
 codes.joyBreak              = 2005;
 codes.fixBreak          = 3005;
 codes.fixBreak2         = 3006; % this is if monkey breaks fixation whennot holding joystick in attn task
+
+codes.saccToTargetOne	= 3007; % Used to identify which target monkey made a saccade to
+codes.saccToTargetTwo	= 3008;
 
 %% optical stimulation codes
 codes.optoStimOn        = 17001;
@@ -189,11 +201,26 @@ codes.lowTone           = 9001;
 codes.noiseTone         = 9002;
 codes.highTone          = 9003;
 
-%% image codes (used in freeview)
+% image codes (used in freeview)
 codes.imageId           = 6660;     % id of image
 codes.imageOn           = 6661;     % time of image onset
 codes.imageOff          = 6662;     % time of image offset
 codes.freeViewDur       = 6663;     % duration of free image viewing
+
+% tokens task codes
+codes.CUE_ON = 5; % [cite: 1]
+codes.REWARD_GIVEN = 7; % [cite: 1]
+codes.TRIAL_END = 6; % [cite: 1]
+codes.REWARD_AMOUNT_BASE = 100; % Base for strobing reward amount [cite: 1]
+codes.OUTCOME_DIST_BASE = 90; % Base for strobing outcome distribution type [cite: 1]
+codes.rwdAmt = 101;
+
+% gSac_4factors codes
+codes.halfBlock     = 16010;
+codes.stimType      = 16011;
+codes.salience      = 16012;
+codes.targetColor   = 16013;
+codes.targetLocIdx  = 16014;
 
 %% validation
 

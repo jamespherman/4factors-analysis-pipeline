@@ -1,5 +1,8 @@
 %% Test script for data_handling.load_session
 
+% turn off warning about modified variable names
+warning('off','MATLAB:table:ModifiedAndSavedVarnames')
+
 % This script is designed to be run from the project's root directory.
 fprintf('Starting test for data_handling.load_session.m\n');
 
