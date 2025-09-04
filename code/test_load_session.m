@@ -22,6 +22,8 @@ try
     fprintf('[INFO] Manifest path: %s\n', manifest_path);
 
     % Get OneDrive path and construct data_base_path
+    % This should be the path to the directory that CONTAINS the
+    % session-specific folders (e.g., '.../Neuronal Data Analysis/')
     oneDrivePath = findOneDrive();
     data_base_path = fullfile(oneDrivePath, 'Neuronal Data Analysis');
     fprintf('[INFO] Data base path: %s\n', data_base_path);
@@ -30,6 +32,8 @@ try
     manifest_table = readtable(manifest_path);
     TEST_UNIQUE_ID = manifest_table.unique_id{1};
     fprintf('[INFO] Using test unique_id: %s\n', TEST_UNIQUE_ID);
+    fprintf('[INFO] The test will now check for the data file at: %s\n', ...
+        fullfile(data_base_path, TEST_UNIQUE_ID, [TEST_UNIQUE_ID '_session_data.mat']));
 
     % Call the function to load session data
     session_data = data_handling.load_session(TEST_UNIQUE_ID, manifest_path, data_base_path);

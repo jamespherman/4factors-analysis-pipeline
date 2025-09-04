@@ -50,7 +50,7 @@ metadata_from_manifest = table2struct(manifest_table(row_idx, :));
 
 % Construct the full path to the data file
 data_file_name = [unique_id, '_session_data.mat'];
-data_file_path = fullfile(data_base_path, data_file_name);
+data_file_path = fullfile(data_base_path, unique_id, data_file_name);
 
 % Check if data file exists
 if ~isfile(data_file_path)

@@ -1,5 +1,8 @@
 # Agent Instructions
 
+## Documentation
+Before making any assumptions about data structures, file locations, or the project's architecture, please thoroughly review the documentation provided in the `/docs` directory. The markdown files in this directory contain critical information that will help you understand the project and avoid common pitfalls.
+
 This document provides a set of guidelines and conventions to follow when working with the MATLAB code in this repository. Adhering to these standards will help ensure the code is clean, readable, and maintainable.
 
 ## Path Setup
