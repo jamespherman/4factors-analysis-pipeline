@@ -48,10 +48,16 @@ switch session_data.metadata.brain_area
         end
 
     otherwise
-        % If the brain area is not recognized, return an empty list.
-        warning(['No specific selection criteria for brain area: %s. ' ...
-                 'Returning empty list.'], ...
-                 session_data.metadata.brain_area);
+        % For any other brain area, default to selecting all "good" neurons.
+        warning('No specific selection criteria for brain area: %s. ', ...
+                session_data.metadata.brain_area);
+        fprintf('Defaulting to select all "Good" neurons.\n');
+
+        % Get the list of good quality neurons
+        good_neuron_ids = utils.get_good_neurons(session_data);
+
+        % The ismember function returns a logical mask.
+        is_selected_mask = ismember(all_neuron_ids, good_neuron_ids);
 end
 
 % Use the logical mask to get the final list of neuron IDs.
