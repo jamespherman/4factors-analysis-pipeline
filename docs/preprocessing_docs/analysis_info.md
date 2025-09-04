@@ -21,7 +21,7 @@ All processed data, including the final `_session_data.mat` file, is stored in a
 The full path to a session's data folder is:
 `{Your_OneDrive_Path}/Neuronal Data Analysis/{unique_id}/`
 
-The pipeline includes a helper function, `utils.findOneDrive.m`, to get the root path of your OneDrive folder programmatically. You can combine this with a `unique_id` from the manifest to construct the full path to the data file you want to analyze.
+The pipeline includes a helper function, `findOneDrive.m`, to get the root path of your OneDrive folder programmatically. You can combine this with a `unique_id` from the manifest to construct the full path to the data file you want to analyze.
 
 Example (in MATLAB):
 ```matlab
