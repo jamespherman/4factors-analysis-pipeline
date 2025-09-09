@@ -6,52 +6,57 @@
 % and an unrecognized brain area.
 
 %% Setup
-% Add the code directory to the MATLAB path to ensure all functions are accessible.
+% Add the code directory to the MATLAB path to ensure all functions are
+% accessible.
 addpath(fileparts(mfilename('fullpath')));
 
 % Find the path to the manifest and the data directory.
 [~, datapath] = utils.findOneDrive();
-manifest_path = fullfile(datapath, '..', 'config', 'session_manifest.csv');
+manifestPath = fullfile(datapath, '..', 'config', 'session_manifest.csv');
 
 % Read the session manifest.
-manifest = readtable(manifest_path);
+manifest = readtable(manifestPath);
 
 % Find a unique_id for an 'SC' session.
-sc_rows = find(strcmp(manifest.brain_area, 'SC'));
-if isempty(sc_rows)
+scRows = find(strcmp(manifest.brain_area, 'SC'));
+if isempty(scRows)
     error('No SC sessions found in the manifest.');
 end
-sc_test_id = manifest.unique_id{sc_rows(1)};
+scTestId = manifest.unique_id{scRows(1)};
 
 % Find a unique_id for an 'SNc' session.
-snc_rows = find(strcmp(manifest.brain_area, 'SNc'));
-if isempty(snc_rows)
+sncRows = find(strcmp(manifest.brain_area, 'SNc'));
+if isempty(sncRows)
     error('No SNc sessions found in the manifest.');
 end
-snc_test_id = manifest.unique_id{snc_rows(1)};
+sncTestId = manifest.unique_id{sncRows(1)};
 
-fprintf('Setup complete. Using ID %s for SC and ID %s for SNc.\n', sc_test_id, snc_test_id);
+fprintf('Setup complete. Using ID %s for SC and ID %s for SNc.\n', ...
+    scTestId, sncTestId);
 
 
 %% Test 1: SC Selection Case
 try
     % Load the SC session data.
-    session_data_sc = data_handling.load_session(sc_test_id, datapath);
+    sessionDataSc = data_handling.load_session(scTestId, datapath);
 
     % Call the neuron selection function.
-    selected_ids_sc = analysis.select_neurons(session_data_sc);
+    selectedIdsSc = analysis.select_neurons(sessionDataSc);
 
     % --- Verification ---
     % 1. Check that the output is a numeric column vector.
-    assert(isnumeric(selected_ids_sc) && iscolumn(selected_ids_sc), 'Output is not a numeric column vector.');
+    assert(isnumeric(selectedIdsSc) && iscolumn(selectedIdsSc), ...
+        'Output is not a numeric column vector.');
 
     % 2. Check that all selected IDs are part of the original neuron list.
-    original_ids_sc = session_data_sc.spikes.cluster_info.cluster_id;
-    assert(all(ismember(selected_ids_sc, original_ids_sc)), 'Selected IDs are not a subset of original IDs.');
+    originalIdsSc = sessionDataSc.spikes.cluster_info.cluster_id;
+    assert(all(ismember(selectedIdsSc, originalIdsSc)), ...
+        'Selected IDs are not a subset of original IDs.');
 
     % --- Report Results ---
-    fprintf('[PASS] SC test ran successfully. Selected %d out of %d total neurons.\n', ...
-            numel(selected_ids_sc), height(session_data_sc.spikes.cluster_info));
+    fprintf(['[PASS] SC test ran successfully. Selected %d out of %d ' ...
+        'total neurons.\n'], numel(selectedIdsSc), ...
+        height(sessionDataSc.spikes.cluster_info));
 catch ME
     fprintf('[FAIL] SC test failed: %s\n', ME.message);
 end
@@ -60,22 +65,25 @@ end
 %% Test 2: SNc Selection Case
 try
     % Load the SNc session data.
-    session_data_snc = data_handling.load_session(snc_test_id, datapath);
+    sessionDataSnc = data_handling.load_session(sncTestId, datapath);
 
     % Call the neuron selection function.
-    selected_ids_snc = analysis.select_neurons(session_data_snc);
+    selectedIdsSnc = analysis.select_neurons(sessionDataSnc);
 
     % --- Verification ---
     % 1. Check that the output is a numeric column vector.
-    assert(isnumeric(selected_ids_snc) && iscolumn(selected_ids_snc), 'Output is not a numeric column vector.');
+    assert(isnumeric(selectedIdsSnc) && iscolumn(selectedIdsSnc), ...
+        'Output is not a numeric column vector.');
 
     % 2. Check that all selected IDs are part of the original neuron list.
-    original_ids_snc = session_data_snc.spikes.cluster_info.cluster_id;
-    assert(all(ismember(selected_ids_snc, original_ids_snc)), 'Selected IDs are not a subset of original IDs.');
+    originalIdsSnc = sessionDataSnc.spikes.cluster_info.cluster_id;
+    assert(all(ismember(selectedIdsSnc, originalIdsSnc)), ...
+        'Selected IDs are not a subset of original IDs.');
 
     % --- Report Results ---
-    fprintf('[PASS] SNc test ran successfully. Selected %d out of %d total neurons.\n', ...
-            numel(selected_ids_snc), height(session_data_snc.spikes.cluster_info));
+    fprintf(['[PASS] SNc test ran successfully. Selected %d out of %d ' ...
+        'total neurons.\n'], numel(selectedIdsSnc), ...
+        height(sessionDataSnc.spikes.cluster_info));
 catch ME
     fprintf('[FAIL] SNc test failed: %s\n', ME.message);
 end
@@ -84,18 +92,20 @@ end
 %% Test 3: Default/Other Area Case
 try
     % Use the loaded SC data as a base and modify the brain area.
-    session_data_other = session_data_sc;
-    session_data_other.metadata.brain_area = 'Cortex'; % An unrecognized area.
+    sessionDataOther = sessionDataSc;
+    sessionDataOther.metadata.brain_area = 'Cortex'; % An unrecognized area.
 
     % Call the neuron selection function.
-    selected_ids_other = analysis.select_neurons(session_data_other);
+    selectedIdsOther = analysis.select_neurons(sessionDataOther);
 
     % --- Verification ---
     % The function should return an empty list for unrecognized areas.
-    assert(isempty(selected_ids_other), 'The function did not return an empty list for an unrecognized brain area.');
+    assert(isempty(selectedIdsOther), ...
+        'The function did not return an empty list for an unrecognized area.');
 
     % --- Report Results ---
-    fprintf('[PASS] Default case for unrecognized brain area handled correctly.\n');
+    fprintf(['[PASS] Default case for unrecognized brain area handled ' ...
+        'correctly.\n']);
 catch ME
     fprintf('[FAIL] Default case test failed: %s\n', ME.message);
 end
