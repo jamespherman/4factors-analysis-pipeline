@@ -1,6 +1,6 @@
 # Data Dictionary for `session_data.mat`
 
-This document provides a comprehensive description of the data structure contained within the `session_data.mat` file. This file is the final output of the data processing pipeline, created by `consolidate.consolidate_session.m`. It merges behavioral data, which has been aligned and processed by `prep.prepare_behavioral_data.m`, with the output of the Kilosort spike sorting analysis.
+This document provides a comprehensive description of the data structure contained within the `session_data.mat` file. This file is the final output of the data processing pipeline, created by `consolidate.consolidate_data.m`. It merges behavioral data (from `prep.prepare_behavioral_data.m`), spike data (from Kilosort), and mean waveform data (from `consolidate.extract_waveforms.m`).
 
 The `session_data.mat` file contains a single top-level struct named `session_data`.
 
@@ -10,6 +10,7 @@ The `session_data.mat` file contains a single top-level struct named `session_da
 |---|---|---|
 | `trialInfo` | `table` | A table containing trial-by-trial information, merging behavioral parameters from PLDAPS with trial events from the neural data. Each row corresponds to one trial. |
 | `eventTimes` | `struct` | A structure containing vectors of timestamps for key events in each trial. Each field corresponds to an event, and the vector length matches the number of trials. |
+| `eventValuesTrials` | `cell` | A cell array where each cell contains a vector of the raw digital event codes (strobes) from the `.nev` file for the corresponding trial. |
 | `spikes` | `struct` | A structure containing all spike-related data, including spike times, cluster assignments, and waveform information. |
 
 ---
@@ -17,6 +18,8 @@ The `session_data.mat` file contains a single top-level struct named `session_da
 ## `session_data.trialInfo`
 
 The `trialInfo` table is the primary source of behavioral data for each trial. The columns of this table are dynamically generated based on the specific PLDAPS task file used for the session. It includes a combination of data strobed to the neural recording system and parameters saved by the PLDAPS task code (`p.trVars` and `p.trData`).
+
+Fields that are consistently scalar and numeric (or boolean) across all trials are stored as numeric arrays. Any trial where the value was empty (`[]`) in the raw PLDAPS data is represented as `NaN` in these arrays. Fields with inconsistent sizes (e.g., arrays of different lengths in different trials) or non-numeric data types are stored as `cell` arrays.
 
 ### Standard Fields (from `.nev` file)
 
@@ -34,7 +37,7 @@ These fields are derived from the `.nev` file and provide the basic structure of
 
 ### PLDAPS Fields (from `p.trVars` and `p.trData`)
 
-The following fields are sourced from the PLDAPS `p` structure, which is saved on a per-trial basis. Because different tasks may save different variables, this list is a superset of all possible fields found across the documented tasks. Not all fields will be present in every `session_data.mat` file.
+**Note on Dynamic Fields**: The fields listed below are sourced from the PLDAPS `p` structure, which is saved on a per-trial basis. The `prepare_behavioral_data.m` script dynamically discovers all scalar and cell-based variables within the `p.trVars` and `p.trData` structures and adds them to the `trialInfo` table. Because different behavioral tasks save different variables, the list below should be considered a representative superset of possible fields, not an exhaustive list. Not all fields will be present in every `session_data.mat` file.
 
 #### General & Control Variables
 
@@ -126,12 +129,13 @@ The `eventTimes` structure contains vectors of timestamps for key trial events. 
 | `sacOn` | Timestamp of saccade onset. |
 | `sacOff` | Timestamp of saccade offset. |
 | `reward` | Timestamp of when the reward was delivered. |
+| `outcomeOn` | For 'tokens' task trials, the corrected timestamp of when the token outcome was displayed. `NaN` for other tasks. |
 | `brokeFix` | Timestamp of when a fixation break occurred. |
 | `brokeJoy` | Timestamp of when a joystick break occurred. |
 
 ### PLDAPS Timing Fields (prefixed with `pds`)
 
-These fields are dynamically added from the `p.trData.timing` structure in the PLDAPS data. The `prepare_behavioral_data.m` script prefixes the original field name with `pds`. For example, `p.trData.timing.targetReillum` becomes `eventTimes.pdsTargetReillum`.
+**Note on Dynamic Fields**: These fields are dynamically discovered from the `p.trData.timing` structure in the PLDAPS data. The `prepare_behavioral_data.m` script identifies all scalar fields within this structure and adds them to `eventTimes`, prefixing the original field name with `pds`. For example, `p.trData.timing.targetReillum` becomes `eventTimes.pdsTargetReillum`. The list below is representative, but the exact fields present may vary between tasks.
 
 | Field | Description |
 |---|---|
@@ -160,6 +164,62 @@ These fields are dynamically added from the `p.trData.timing` structure in the P
 | `pdsCueOff` | Timestamp of when the cue disappeared. |
 | `pdsStimChg` | Timestamp of the stimulus change. |
 | `pdsOutcomeOn` | Timestamp the token outcome was displayed. |
+
+---
+
+## Special Case: Timestamp Correction for `gSac_4factors` Task
+
+In sessions that include the `gSac_4factors` task, a special correction procedure is applied during the `prep.prepare_behavioral_data` step to account for known timing inaccuracies in the data generated by this task.
+
+### Correction Method
+
+1.  **Identify Ground Truth**: The pipeline identifies all trials within the session that are *not* `gSac_4factors` trials to serve as a reliable "ground truth" for timestamp alignment.
+
+2.  **Fit Linear Model**: It builds a linear regression model (`polyfit`) to map the PLDAPS-based timestamps from the reliable trials to the master Ripple-based timestamps.
+    *   **Outlier Removal**: Before fitting the final model, an initial fit is performed to identify and remove outliers. Any data points where the residual (error) is more than 3 standard deviations from the mean are excluded from the final fit.
+
+3.  **Predict and Correct Timestamps**: This linear model is then used to predict the correct, Ripple-based timestamps for all event times recorded within the `gSac_4factors` trials. The original, inaccurate timestamps for these trials are overwritten with the corrected values. This correction is applied to a specific set of event fields.
+
+4.  **Null Unreliable Fields**: Certain event fields that are known to be particularly unreliable in this task are explicitly set to `NaN` for all `gSac_4factors` trials. These fields include `nonStart` and `blinkDuringSac`.
+
+### Corrected Fields
+
+The following fields in the `eventTimes` structure are re-calculated based on the linear model for all `gSac_4factors` trials:
+
+*   `CUE_ON`
+*   `fixAq`
+*   `fixBreak`
+*   `fixOff`
+*   `fixOn`
+*   `joyPress`
+*   `lowTone`
+*   `reward`
+*   `REWARD_GIVEN`
+*   `saccadeOffset`
+*   `saccadeOnset`
+*   `targetAq`
+*   `targetOff`
+*   `targetOn`
+*   `targetReillum`
+*   `trialEnd`
+*   `TRIAL_END`
+*   `trialBegin`
+
+### Diagnostic Plot
+
+As part of this process, a diagnostic plot is generated to allow for visual inspection of the quality of the linear fit. This plot, named `{unique_id}_timestamp_fit.pdf`, is saved in the `diagnostics` subfolder within the session's processed data directory (e.g., `.../{unique_id}/diagnostics/`). It shows a scatter plot of the ground-truth timestamps (after outlier removal) and the best-fit line, along with the R-squared value of the fit.
+
+---
+
+## Special Case: Timestamp Correction for 'tokens' Task Outcome
+
+For trials belonging to the 'tokens' task, the general session-wide timestamp correction model (as described in the `gSac_4factors` section) is used to calculate a precise, corrected timestamp for when the trial's outcome (i.e., the token) was displayed.
+
+### Correction Method
+
+1.  **Identify 'tokens' Trials**: The pipeline identifies all trials where the `taskCode` corresponds to the 'tokens' task.
+2.  **Apply Linear Model**: For each of these trials, the pipeline takes the PLDAPS-based timestamp for the outcome display (`pdsOutcomeOn`) and uses the session's linear correction model to translate it into the master Ripple clock's time base.
+3.  **Store Corrected Timestamp**: The resulting corrected timestamp is stored in a new, dedicated field in the `eventTimes` structure called `outcomeOn`. If a trial is not a 'tokens' task trial, its value in `eventTimes.outcomeOn` will be `NaN`.
 
 ---
 
