@@ -1,4 +1,4 @@
-function [selected_neurons, sig_epoch_comparison, scSide] = screen_sc_neurons(session_data)
+function [selected_neurons, sig_epoch_comparison, scSide, trial_groups, group_sig_results] = screen_sc_neurons(session_data)
 % screen_sc_neurons - Implements an inclusive, multi-group method to identify
 % task-modulated SC neurons.
 %
@@ -23,6 +23,10 @@ function [selected_neurons, sig_epoch_comparison, scSide] = screen_sc_neurons(se
 %                          significant firing rate changes between epochs.
 %   scSide           - A string ('right' or 'left') indicating the determined
 %                      recorded SC side.
+%   trial_groups     - A cell array of logical masks, each defining a
+%                      group of trials used for analysis.
+%   group_sig_results - A cell array containing the significance test
+%                       results for each neuron within each trial group.
 %
 
 fprintf('screen_sc_neurons: Identifying task-modulated neurons...\n');
