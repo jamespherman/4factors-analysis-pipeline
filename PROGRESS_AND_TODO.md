@@ -4,11 +4,11 @@ This document tracks the development of the analysis pipeline. It will be update
 
 ### **Part 0: Project Setup and Repository Initialization**
 
-* \[ \] **(USER)** Create a GitHub repository with a standard MATLAB .gitignore file.  
-* \[ \] **(USER)** Create the initial directory structure: /code, /config, /docs, /output.  
-* \[ \] **(USER)** Add existing helper functions (arrayROC.m, performCCA.m, barStairsFill.m, unitQualityAssesment\_script.m, makePSTHgrid.m) to the /code/utils/ directory.  
-* \[ \] **(USER)** Place the initial README.md and PROGRESS\_AND\_TODO.md files in the repository root.  
-* \[ \] **(USER)** Revise config/session\_manifest.csv to include new columns:  
+* \[x] **(USER)** Create a GitHub repository with a standard MATLAB .gitignore file.
+* \[x] **(USER)** Create the initial directory structure: /code, /config, /docs, /output.
+* \[x] **(USER)** Add existing helper functions (arrayROC.m, performCCA.m, barStairsFill.m, unitQualityAssesment\_script.m, makePSTHgrid.m) to the /code/utils/ directory.
+* \[x] **(USER)** Place the initial README.md and PROGRESS\_AND\_TODO.md files in the repository root.
+* \[x] **(USER)** Revise config/session\_manifest.csv to include new columns:
   * has\_gSac\_4factors (boolean/0-1)  
   * has\_gSac\_jph (boolean/0-1)  
   * neuron\_summary\_pdf\_status (e.g., 'pending', 'complete')  
@@ -17,17 +17,16 @@ This document tracks the development of the analysis pipeline. It will be update
 
 ### **Part 1: Data Loading & Preparation Module**
 
-* \[ \] **Task 1.1:** Create \+data\_handling/load\_session.m. This function will take a unique\_id string, read config/session\_manifest.csv, load the corresponding session\_data.mat file, and return both the session\_data struct and a struct of relevant metadata from the manifest row.  
-* \[ \] **Task 1.2:** Create \+utils/get\_good\_neurons.m. This function will take a session\_data.spikes struct and return a vector of cluster\_ids for neurons marked as 'good'.  
-* \[ \] **Task 1.3:** Create \+data\_handling/get\_spike\_times.m. This function will take session\_data.spikes and a vector of cluster\_ids, and return a cell array where each cell contains the spike timestamps for one neuron.  
-* \[ \] **Task 1.4:** Create \+data\_handling/bin\_spike\_data.m. This function will take spike times, event alignment times, and a time window (e.g., \[-0.5, 1.0\]), and return a binned spike count matrix (nTrials x nTimeBins) for a single neuron.
+* \[x] **Task 1.1:** Create \+data\_handling/load\_session.m. This function will take a unique\_id string, read config/session\_manifest.csv, load the corresponding session\_data.mat file, and return both the session\_data struct and a struct of relevant metadata from the manifest row.
+* \[x] **Task 1.2:** Create \+analysis/select\_neurons.m. This function acts as a controller to select neurons for analysis by calling area-specific screening functions. This is a more advanced implementation than the originally planned `get_good_neurons.m`.
+* \[x] **Task 1.2a (New):** Create \+analysis/screen\_da\_neurons.m. Selects putative DA neurons based on firing rate and waveform characteristics.
+* \[x] **Task 1.2b (New):** Create \+analysis/screen\_sc\_neurons.m. Implements an inclusive, multi-group method to identify task-modulated SC neurons.
+* \[x] **Task 1.3:** Create \+analysis/get\_spike\_times.m. This function will take session\_data.spikes and a vector of cluster\_ids, and return a cell array where each cell contains the spike timestamps for one neuron. *(Note: Moved to +analysis package)*.
+* \[x] **Task 1.4:** Create \+utils/alignAndBinSpikes.m. This function takes spike times, event alignment times, and a time window and returns a binned spike count matrix. *(Note: Implemented in utils package)*.
 
 ### **Part 2: Data Exploration & Quality Control**
 
-* \[ \] **Task 2.1:** Create a script/function generate\_neuron\_summary\_pdfs.m. For each 'good' neuron in a session, this script will generate and save a single-page PDF containing:  
-  * Mean waveform on the peak channel.  
-  * Inter-Spike Interval (ISI) histogram.  
-  * A grid of PSTHs for key trial conditions from the gSac\_4factors task, using subplot (not TiledLayout) and barStairsFill.m for plotting.
+* \[x] **Task 2.1:** The functionality for generating summary plots is partially implemented within the screening functions (`screen_da_neurons.m` and `screen_sc_neurons.m`), which create diagnostic plots for their respective analyses. A separate `generate_neuron_summary_pdfs.m` script does not exist.
 
 ### **Part 3: Behavioral Analysis Module**
 
