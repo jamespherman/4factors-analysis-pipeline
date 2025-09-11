@@ -5,17 +5,24 @@
 % returns a valid list of neuron IDs. It tests the logic for SC, SNc,
 % and an unrecognized brain area.
 
-%% Setup
-% Add the code directory to the MATLAB path to ensure all functions are
-% accessible.
-addpath(fileparts(mfilename('fullpath')));
+%% Standard Setup
+% This block assumes the script is run from the project's root directory.
+% It defines key path variables and adds necessary folders to the MATLAB path.
 
-% Find the path to the manifest and the data directory.
-[~, datapath] = utils.findOneDrive();
-manifestPath = fullfile(datapath, '..', 'config', 'session_manifest.csv');
+% Define project root and data directory paths.
+project_root = pwd;
+data_base_path = utils.findOneDrive(); % Standard way to find the data directory.
 
-% Read the session manifest.
-manifest = readtable(manifestPath);
+% Add all sub-directories within the 'code' folder to the MATLAB path.
+addpath(genpath(fullfile(project_root, 'code')));
+
+% Construct the full path to the session manifest.
+manifest_path = fullfile(project_root, 'config', 'session_manifest.csv');
+
+
+%% Test-Specific Setup
+% Read the session manifest to find session IDs for testing.
+manifest = readtable(manifest_path);
 
 % Find a unique_id for an 'SC' session.
 scRows = find(strcmp(manifest.brain_area, 'SC'));
@@ -37,8 +44,8 @@ fprintf('Setup complete. Using ID %s for SC and ID %s for SNc.\n', ...
 
 %% Test 1: SC Selection Case
 try
-    % Load the SC session data.
-    sessionDataSc = data_handling.load_session(scTestId, datapath);
+    % Load the SC session data using the standardized function.
+    sessionDataSc = data_handling.load_session(scTestId, manifest_path, data_base_path);
 
     % Call the neuron selection function.
     selectedIdsSc = analysis.select_neurons(sessionDataSc);
@@ -54,9 +61,8 @@ try
         'Selected IDs are not a subset of original IDs.');
 
     % --- Report Results ---
-    fprintf(['[PASS] SC test ran successfully. Selected %d out of %d ' ...
-        'total neurons.\n'], numel(selectedIdsSc), ...
-        height(sessionDataSc.spikes.cluster_info));
+    fprintf('[PASS] SC test ran successfully. Selected %d out of %d total neurons.\n', ...
+        numel(selectedIdsSc), height(sessionDataSc.spikes.cluster_info));
 catch ME
     fprintf('[FAIL] SC test failed: %s\n', ME.message);
 end
@@ -64,8 +70,8 @@ end
 
 %% Test 2: SNc Selection Case
 try
-    % Load the SNc session data.
-    sessionDataSnc = data_handling.load_session(sncTestId, datapath);
+    % Load the SNc session data using the standardized function.
+    sessionDataSnc = data_handling.load_session(sncTestId, manifest_path, data_base_path);
 
     % Call the neuron selection function.
     selectedIdsSnc = analysis.select_neurons(sessionDataSnc);
@@ -81,9 +87,8 @@ try
         'Selected IDs are not a subset of original IDs.');
 
     % --- Report Results ---
-    fprintf(['[PASS] SNc test ran successfully. Selected %d out of %d ' ...
-        'total neurons.\n'], numel(selectedIdsSnc), ...
-        height(sessionDataSnc.spikes.cluster_info));
+    fprintf('[PASS] SNc test ran successfully. Selected %d out of %d total neurons.\n', ...
+        numel(selectedIdsSnc), height(sessionDataSnc.spikes.cluster_info));
 catch ME
     fprintf('[FAIL] SNc test failed: %s\n', ME.message);
 end
@@ -92,6 +97,7 @@ end
 %% Test 3: Default/Other Area Case
 try
     % Use the loaded SC data as a base and modify the brain area.
+    % This test does not require loading new data, so it's fine as is.
     sessionDataOther = sessionDataSc;
     sessionDataOther.metadata.brain_area = 'Cortex'; % An unrecognized area.
 
@@ -104,8 +110,7 @@ try
         'The function did not return an empty list for an unrecognized area.');
 
     % --- Report Results ---
-    fprintf(['[PASS] Default case for unrecognized brain area handled ' ...
-        'correctly.\n']);
+    fprintf('[PASS] Default case for unrecognized brain area handled correctly.\n');
 catch ME
     fprintf('[FAIL] Default case test failed: %s\n', ME.message);
 end
