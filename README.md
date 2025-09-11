@@ -38,3 +38,12 @@ The analysis pipeline is controlled by the session\_manifest.csv file and execut
    \>\> main\_analysis\_pipeline
 
 3. **Review Output**: The script will iterate through the selected sessions, perform the specified analyses, and save all outputs (e.g., per-neuron PDF summaries, statistical results, figures) to the /output directory, organized by session unique\_id.
+
+## **5\. Data and Path Conventions**
+
+This project uses a standardized two-directory system to separate code from data.
+
+*   **Project Directory**: This is the repository you cloned from Git. It contains all the MATLAB code (`.m` files), configuration files, and documentation.
+*   **Data Directory**: This is a separate directory located on OneDrive where the large `_session_data.mat` files are stored. It is kept separate from the project repository to avoid versioning large data files.
+
+All scripts in this project are designed to be run from the root of the Project Directory. The code includes a helper function (`utils.findOneDrive`) to automatically locate the Data Directory on your system, ensuring that the analysis pipeline can find the necessary data files without manual path configuration.
