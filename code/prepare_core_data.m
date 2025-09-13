@@ -1,7 +1,7 @@
 %% prepare_core_data.m
 %
 %   This function serves as the main wrapper for preparing analysis-ready
-%   data structures for the tokens task. It orchestrates the processing of
+%   data structures for the 4factors task. It orchestrates the processing of
 %   both neuronal and pupil data by calling specialized sub-functions.
 %
 % INPUTS:
@@ -29,20 +29,20 @@ addpath(fullfile(script_dir, 'utils'));
 % Load the structure containing all task codes
 codes = initCodes();
 
-% Find the indices of trials that belong to the 'tokens' task. Importantly,
+% Find the indices of trials that belong to the '4factors' task. Importantly,
 % we should only keep trials that are rewarded:
-tokens_trial_indices = find(session_data.trialInfo.taskCode == ...
-    codes.uniqueTaskCode_tokens & ~cellfun(@isempty, ...
+fourfactors_trial_indices = find(session_data.trialInfo.taskCode == ...
+    codes.uniqueTaskCode_4factors & ~cellfun(@isempty, ...
     session_data.eventTimes.rewardCell) );
 
 %% Prepare Neuronal Data
 % Pass the alignment events to the neuronal data preparation function
 core_data.spikes = prepare_neuronal_data(session_data, ...
-    selected_neurons, tokens_trial_indices, alignment_events);
+    selected_neurons, fourfactors_trial_indices, alignment_events);
 
 %% Prepare Pupil Data
-% Pass the alignment events to the pupil data preparation function
-core_data.pupil = prepare_pupil_data(session_data, ...
-    tokens_trial_indices, alignment_events);
+% This part is removed as per the refactoring plan.
+% core_data.pupil = prepare_pupil_data(session_data, ...
+%     fourfactors_trial_indices, alignment_events);
 
 end

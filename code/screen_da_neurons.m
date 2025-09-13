@@ -47,7 +47,7 @@ fprintf('... found %d putative DA neurons (FR < 20 sp/s).\n', ...
 % --- 3. Generate and Save Diagnostic Plot ---
 
 % Define the project root and ensure the figures directory exists
-project_root = fullfile(findOneDrive, 'Code', 'tokens-analysis-pipeline');
+project_root = fullfile(findOneDrive, 'Code', '4factors-analysis-pipeline');
 figures_dir = fullfile(project_root, 'figures');
 
 if ~exist(figures_dir, 'dir')

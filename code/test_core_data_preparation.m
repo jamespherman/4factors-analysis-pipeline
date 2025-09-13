@@ -32,7 +32,7 @@ giveFeed(sprintf('Testing diagnostic workflow for session: %s', ...
 
 %% Load Manifest
 giveFeed('Step 1: Loading session manifest...');
-project_root = fullfile(findOneDrive, 'Code', 'tokens-analysis-pipeline');
+project_root = fullfile(findOneDrive, 'Code', '4factors-analysis-pipeline');
 manifest_path = fullfile(project_root, 'config', 'session_manifest.csv');
 manifest = readtable(manifest_path);
 

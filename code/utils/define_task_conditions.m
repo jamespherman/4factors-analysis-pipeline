@@ -17,7 +17,7 @@ function [conditions, is_av_session, condition_defs] = define_task_conditions(tr
 
 %% --- I. Define the Comprehensive Analysis Plan ---
 % This section defines the entire analysis plan. It is used by the main
-% pipeline script, `run_tokens_analysis.m`, to determine which analyses
+% pipeline script, `run_4factors_analysis.m`, to determine which analyses
 % to run.
 
 % A. Canonical Names for Condition Masks
@@ -92,17 +92,17 @@ end
 codes = initCodes;
 is_av_session = isfield(trialInfo, 'isAVTrial');
 
-is_tokens_trial = (trialInfo.taskCode == codes.uniqueTaskCode_tokens) & ...
+is_4factors_trial = (trialInfo.taskCode == codes.uniqueTaskCode_4factors) & ...
     ~cellfun(@isempty, eventTimes.rewardCell) & ...
     ~cellfun(@isempty, trialInfo.cueFile);
 
-trialInfo.cueFile = trialInfo.cueFile(is_tokens_trial);
-trialInfo.dist = trialInfo.dist(is_tokens_trial);
-trialInfo.rewardAmt = trialInfo.rewardAmt(is_tokens_trial);
+trialInfo.cueFile = trialInfo.cueFile(is_4factors_trial);
+trialInfo.dist = trialInfo.dist(is_4factors_trial);
+trialInfo.rewardAmt = trialInfo.rewardAmt(is_4factors_trial);
 if is_av_session
-    trialInfo.isAVTrial = trialInfo.isAVTrial(is_tokens_trial);
+    trialInfo.isAVTrial = trialInfo.isAVTrial(is_4factors_trial);
 end
-eventTimes.reward = eventTimes.reward(is_tokens_trial);
+eventTimes.reward = eventTimes.reward(is_4factors_trial);
 
 % B. Foundational Conditions
 conditions.is_familiar = contains(trialInfo.cueFile, 'fam');

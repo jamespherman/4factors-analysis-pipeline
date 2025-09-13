@@ -1,6 +1,6 @@
-%% run_tokens_analysis.m
+%% run_4factors_analysis.m
 %
-% Main script to run the entire tokens task analysis pipeline. It iterates
+% Main script to run the entire 4factors task analysis pipeline. It iterates
 % through a session manifest, performs neuron screening, prepares core
 % data, and runs a series of specified analyses based on a centralized plan.
 %
@@ -8,7 +8,7 @@
 % step in the manifest and skips steps that are already marked 'complete'.
 %
 % Author: Jules
-% Date: 2025-09-12 (Refactored)
+% Date: 2025-09-13
 %
 
 %% Setup
@@ -35,7 +35,7 @@ giveFeed = @(x)disp([num2str(round(toc, 1)) 's - ' x]);
 giveFeed('Loading session manifest...');
 manifest_path = fullfile(project_root, 'config', 'session_manifest.csv');
 if ~exist(manifest_path, 'file')
-    error('run_tokens_analysis:manifestNotFound', ...
+    error('run_4factors_analysis:manifestNotFound', ...
         'Session manifest not found at: %s', manifest_path);
 end
 manifest = readtable(manifest_path);
@@ -47,23 +47,6 @@ giveFeed('Loading analysis plan...');
 % define_task_conditions. We call it without arguments to get the plan.
 [~, ~, analysis_plan] = define_task_conditions();
 giveFeed('Analysis plan loaded.');
-
-%% Dynamically Generate Required Alignment Events
-giveFeed('Generating required alignment events list from analysis plan...');
-all_events = {};
-plan_fields = fieldnames(analysis_plan);
-for i = 1:length(plan_fields)
-    sub_plan = analysis_plan.(plan_fields{i});
-    if isstruct(sub_plan)
-        for j = 1:length(sub_plan)
-            if isfield(sub_plan(j), 'event')
-                all_events{end+1} = sub_plan(j).event;
-            end
-        end
-    end
-end
-alignment_events = unique(all_events);
-giveFeed('Alignment events list generated.');
 
 %% Iterate Through Sessions
 for i = 1:height(manifest)
@@ -77,7 +60,7 @@ for i = 1:height(manifest)
         '_session_data.mat']);
 
     if ~exist(session_data_path, 'file')
-        warning('run_tokens_analysis:sessionDataNotFound', ...
+        warning('run_4factors_analysis:sessionDataNotFound', ...
             'session_data.mat not found for %s. Skipping.', ...
             session_id);
         continue;
@@ -158,17 +141,17 @@ for i = 1:height(manifest)
         giveFeed('Screening status is ''pending''. Running screening...');
 
         session_data.metadata.unique_id = session_id;
-        if contains(session_id, 'SNc')
+        if strcmp(session_data.metadata.brain_area, 'SNc')
             selected_neurons = screen_da_neurons(session_data, session_id);
-        elseif contains(session_id, 'SC')
+        elseif strcmp(session_data.metadata.brain_area, 'SC')
             [selected_neurons, sig_epoch_comp, scSide] = ...
                 screen_sc_neurons(session_data);
             session_data.analysis.scSide = scSide;
             session_data.analysis.sig_epoch_comparison = sig_epoch_comp;
         else
-            warning('run_tokens_analysis:unknownSessionType', ...
-                'Unknown session type for %s. Cannot screen neurons.', ...
-                session_id);
+            warning('run_4factors_analysis:unknownSessionType', ...
+                'Unknown brain_area ''%s'' for session %s. Cannot screen neurons.', ...
+                session_data.metadata.brain_area, session_id);
             continue;
         end
 
@@ -188,7 +171,7 @@ for i = 1:height(manifest)
 
     % Check if the directory exists and contains any PDF files
     if (~exist(diag_output_dir, 'dir') || isempty(dir(fullfile( ...
-            diag_output_dir, '*.pdf')))) || force_rerun.diag_pdfs 
+            diag_output_dir, '*.pdf')))) || force_rerun.diag_pdfs
         step_counter = step_counter + 1;
         fprintf(['\n--- Session %s: Starting Step %d of %d: ' ...
             'Diagnostic PDF Generation ---\n'], unique_id, ...
@@ -213,7 +196,28 @@ for i = 1:height(manifest)
             step_counter, n_total_steps);
         giveFeed(['Data prep status is ''pending''. ' ...
             '            Running prepare_core_data...']);
-        core_data = prepare_core_data(session_data, selected_neurons, alignment_events);
+
+        % --- Integration of Analysis Plan for Data Prep ---
+        % Call define_task_conditions without arguments to get the plan.
+        [~, ~, analysis_plan_for_prep] = define_task_conditions();
+
+        % Dynamically generate the list of required alignment events from the plan.
+        all_events_prep = {};
+        plan_fields_prep = fieldnames(analysis_plan_for_prep);
+        for i_field = 1:length(plan_fields_prep)
+            sub_plan = analysis_plan_for_prep.(plan_fields_prep{i_field});
+            if isstruct(sub_plan)
+                for j = 1:length(sub_plan)
+                    if isfield(sub_plan(j), 'event')
+                        all_events_prep{end+1} = sub_plan(j).event;
+                    end
+                end
+            end
+        end
+        alignment_events_prep = unique(all_events_prep);
+
+        % Now call prepare_core_data with the dynamic events.
+        core_data = prepare_core_data(session_data, selected_neurons, alignment_events_prep);
         session_data.analysis.core_data = core_data;
 
         data_updated = true; % Mark data as updated

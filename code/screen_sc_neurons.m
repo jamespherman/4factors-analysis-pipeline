@@ -29,7 +29,7 @@ fprintf('screen_sc_neurons: Identifying task-modulated neurons...\n');
 
 % Define output directory and filename
 project_root = fullfile(findOneDrive, 'Code', ...
-    'tokens-analysis-pipeline');
+    '4factors-analysis-pipeline');
 output_dir = fullfile(project_root, 'figures');
 
 % --- Setup and Data Extraction ---
