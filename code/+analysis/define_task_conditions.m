@@ -1,87 +1,144 @@
-function conditions = define_task_conditions(session_data)
-% DEFINE_TASK_CONDITIONS creates a struct of logical masks for experimental conditions.
+function output = define_task_conditions(varargin)
+% DEFINE_TASK_CONDITIONS is a dual-purpose function for the 4factors task.
 %
-% This function identifies all valid, successfully completed trials from the
-% gSac_4factors task and generates logical masks for various experimental
-% conditions. All output masks are filtered by this master set of valid trials.
+% This function serves two roles:
+% 1. Analysis Plan Definition (nargin == 0): When called with no arguments,
+%    it returns the complete analysis plan, defining alignment events,
+%    comparisons, and conditions for analysis.
+% 2. Condition Mask Generation (nargin > 0): When called with session_data,
+%    it generates logical masks for various experimental conditions based on
+%    the trial data.
 %
-% INPUT:
-%   session_data: A struct containing session data, including trialInfo.
+%   Usage:
+%   % To get the analysis plan:
+%   analysisPlan = analysis.define_task_conditions();
 %
-% OUTPUT:
-%   conditions: A struct with fields for each logical mask. Each field will
-%               have a length equal to the number of valid gSac_4factors trials.
+%   % To get condition masks for a session:
+%   conditions = analysis.define_task_conditions(session_data);
+%
+%   Inputs:
+%   varargin{1} - (Optional) A struct of session_data. If not provided,
+%                 the function returns the analysis plan.
+%
+%   Outputs:
+%   output - If nargin == 0, a struct named 'analysisPlan'.
+%            If nargin > 0, a struct named 'conditions'.
 %
 % See also: analysis.determine_rf_location
 
-% --- Initial Trial Filtering (The Master Mask) ---
-trialInfo = session_data.trialInfo;
+if nargin == 0
+    % --- Define and return the analysis plan ---
+    analysisPlan.alignment_events = {'fixOn', 'targetOn', 'fixOff', ...
+        'saccadeOnset', 'reward'};
 
-% Identify trials belonging to the gSac_4factors task
-is_gSac_4factors = strcmp(trialInfo.task, 'gSac_4factors');
+    % Define conditions for "Baseline vs. Post-Event Activity" analysis
+    analysisPlan.baseline_comparison.conditions_to_run = {
+        'is_high_reward', 'is_low_reward', 'is_high_salience', ...
+        'is_low_salience', 'is_face_target', 'is_nonface_target', ...
+        'is_high_probability', 'is_low_probability'
+        };
 
-% Identify successfully completed trials (assuming outcome == 1 is success)
-is_successful = trialInfo.outcome == 1;
+    % Define comparisons for ROC analysis
+    comparisons(1).name = 'reward';
+    comparisons(1).event = 'targetOn';
+    comparisons(1).cond1 = 'is_high_reward';
+    comparisons(1).cond2 = 'is_low_reward';
+    comparisons(1).trial_mask = 'is_in_rf';
 
-% The master mask: valid, completed trials from the correct task
-master_mask = is_gSac_4factors & is_successful;
+    comparisons(2).name = 'salience';
+    comparisons(2).event = 'targetOn';
+    comparisons(2).cond1 = 'is_high_salience';
+    comparisons(2).cond2 = 'is_low_salience';
+    comparisons(2).trial_mask = 'is_in_rf';
 
-% --- Receptive Field (RF) Conditions ---
-% Get the index of the target location inside the SC receptive field
-rf_location_idx = analysis.determine_rf_location(session_data);
+    comparisons(3).name = 'identity';
+    comparisons(3).event = 'targetOn';
+    comparisons(3).cond1 = 'is_face_target';
+    comparisons(3).cond2 = 'is_nonface_target';
+    comparisons(3).trial_mask = 'is_in_rf';
 
-% Create logical masks based on the trial-by-trial target location
-is_in_rf = (trialInfo.pdsTargLocIdx == rf_location_idx);
-is_out_of_rf = ~is_in_rf;
+    comparisons(4).name = 'probability';
+    comparisons(4).event = 'targetOn';
+    comparisons(4).cond1 = 'is_high_probability';
+    comparisons(4).cond2 = 'is_low_probability';
+    comparisons(4).trial_mask = 'is_in_rf';
 
-% --- The Four Factors ---
+    analysisPlan.roc_comparison.comparisons_to_run = comparisons;
 
-% 1. Reward
-is_high_reward = (trialInfo.reward == 2);
-is_low_reward = (trialInfo.reward == 1);
+    output = analysisPlan;
+else
+    % --- Calculate and return session-specific condition masks ---
+    sessionData = varargin{1};
+    trialInfo = sessionData.trialInfo;
 
-% 2. Salience
-is_high_salience = (trialInfo.salience == 2);
-is_low_salience = (trialInfo.salience == 1);
+    % --- Initial Trial Filtering (The Master Mask) ---
+    % Identify trials belonging to the gSac_4factors task
+    isGSac4factors = strcmp(trialInfo.task, 'gSac_4factors');
 
-% 3. Identity (stimType: 1=Face, 2=Non-face)
-is_face_target = (trialInfo.stimType == 1);
-is_nonface_target = (trialInfo.stimType == 2);
+    % Identify successfully completed trials (outcome == 1 is success)
+    isSuccessful = trialInfo.outcome == 1;
 
-% 4. Spatial Probability (Data-Driven)
-% Get target locations for all valid gSac_4factors trials
-valid_trial_locs = trialInfo.pdsTargLocIdx(master_mask);
+    % The master mask: valid, completed trials from the correct task
+    masterMask = isGSac4factors & isSuccessful;
 
-% Calculate frequency of presentation for each unique target location
-[unique_locs, ~, loc_indices] = unique(valid_trial_locs);
-loc_counts = accumarray(loc_indices, 1);
-median_freq = median(loc_counts);
+    % --- Receptive Field (RF) Conditions ---
+    % Get the index of the target location inside the SC receptive field
+    rfLocationIdx = analysis.determine_rf_location(sessionData);
 
-% Identify high and low probability locations
-high_prob_locs = unique_locs(loc_counts > median_freq);
-low_prob_locs = unique_locs(loc_counts < median_freq);
+    % Create logical masks based on the trial-by-trial target location
+    isInRf = (trialInfo.pdsTargLocIdx == rfLocationIdx);
+    isOutOfRf = ~isInRf;
 
-% Create masks based on whether the trial's target is in a high/low prob location
-is_high_probability = ismember(trialInfo.pdsTargLocIdx, high_prob_locs);
-is_low_probability = ismember(trialInfo.pdsTargLocIdx, low_prob_locs);
+    % --- The Four Factors ---
+    % 1. Reward
+    isHighReward = (trialInfo.reward == 2);
+    isLowReward = (trialInfo.reward == 1);
 
-% --- Output Structure ---
-% Filter all logical masks by the master_mask and store in the output struct.
-% This ensures all output fields have the same length, corresponding to the
-% number of valid trials.
-conditions.is_in_rf = is_in_rf(master_mask);
-conditions.is_out_of_rf = is_out_of_rf(master_mask);
+    % 2. Salience
+    isHighSalience = (trialInfo.salience == 2);
+    isLowSalience = (trialInfo.salience == 1);
 
-conditions.is_high_reward = is_high_reward(master_mask);
-conditions.is_low_reward = is_low_reward(master_mask);
+    % 3. Identity (stimType: 1=Face, 2=Non-face)
+    isFaceTarget = (trialInfo.stimType == 1);
+    isNonfaceTarget = (trialInfo.stimType == 2);
 
-conditions.is_high_salience = is_high_salience(master_mask);
-conditions.is_low_salience = is_low_salience(master_mask);
+    % 4. Spatial Probability (Data-Driven)
+    % Get target locations for all valid gSac_4factors trials
+    validTrialLocs = trialInfo.pdsTargLocIdx(masterMask);
 
-conditions.is_face_target = is_face_target(master_mask);
-conditions.is_nonface_target = is_nonface_target(master_mask);
+    % Calculate frequency for each unique target location
+    [uniqueLocs, ~, locIndices] = unique(validTrialLocs);
+    locCounts = accumarray(locIndices, 1);
+    medianFreq = median(locCounts);
 
-conditions.is_high_probability = is_high_probability(master_mask);
-conditions.is_low_probability = is_low_probability(master_mask);
+    % Identify high and low probability locations
+    highProbLocs = uniqueLocs(locCounts > medianFreq);
+    lowProbLocs = uniqueLocs(locCounts < medianFreq);
+
+    % Create masks based on whether trial's target is in a high/low prob
+    isHighProbability = ismember(trialInfo.pdsTargLocIdx, highProbLocs);
+    isLowProbability = ismember(trialInfo.pdsTargLocIdx, lowProbLocs);
+
+    % --- Output Structure ---
+    % Filter all logical masks by the masterMask and store in the output.
+    % This ensures all output fields have the same length, corresponding
+    % to the number of valid trials.
+    conditions.is_in_rf = isInRf(masterMask);
+    conditions.is_out_of_rf = isOutOfRf(masterMask);
+
+    conditions.is_high_reward = isHighReward(masterMask);
+    conditions.is_low_reward = isLowReward(masterMask);
+
+    conditions.is_high_salience = isHighSalience(masterMask);
+    conditions.is_low_salience = isLowSalience(masterMask);
+
+    conditions.is_face_target = isFaceTarget(masterMask);
+    conditions.is_nonface_target = isNonfaceTarget(masterMask);
+
+    conditions.is_high_probability = isHighProbability(masterMask);
+    conditions.is_low_probability = isLowProbability(masterMask);
+
+    output = conditions;
+end
 
 end
