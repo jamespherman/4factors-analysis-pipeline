@@ -26,10 +26,21 @@ else
             pathOut = ['/Users/bellapatel/Library/CloudStorage/' ...
                 'OneDrive-UniversityofPittsburgh/'];
         otherwise
-            homeDirList = mydir(home);
+            homeDirList = mydirsub(home);
             pathOut = [home filesep ...
                 homeDirList{contains(homeDirList, 'OneDrive')}];
     end
 
 end
+end
+
+function dirlist = mydirsub(string)
+
+% dirlist = mydirsub(string)
+
+% use dir to get the names
+fc = dir(string);
+
+% return a cell array of names that do not start with '.'
+dirlist = {fc(cellfun(@(x)~any(x == 1), strfind({fc.name}, '.'))).name};
 end

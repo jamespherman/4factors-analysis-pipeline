@@ -8,4 +8,4 @@ This subdirectory contains documentation inherited from the upstream `neuro-prep
 
 * The overall preprocessing workflow.
 * The exact structure and contents of the `session_data.mat` file.
-* Guidance on how to correctly handle the preprocessed data (e.g., filtering for high-quality neurons).
+* Guidance on how to correctly handle the preprocessed data (e.g., filtering for high-quality units).

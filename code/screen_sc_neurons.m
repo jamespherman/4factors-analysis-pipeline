@@ -1,4 +1,4 @@
-function [selected_neurons, sig_epoch_comparison, scSide, trial_groups, group_sig_results] = screen_sc_neurons(session_data)
+function [selected_neurons, sig_epoch_comparison, scSide] = screen_sc_neurons(session_data)
 % screen_sc_neurons - Implements an inclusive, multi-group method to identify
 % task-modulated SC neurons.
 %
@@ -23,10 +23,6 @@ function [selected_neurons, sig_epoch_comparison, scSide, trial_groups, group_si
 %                          significant firing rate changes between epochs.
 %   scSide           - A string ('right' or 'left') indicating the determined
 %                      recorded SC side.
-%   trial_groups     - A cell array of logical masks, each defining a
-%                      group of trials used for analysis.
-%   group_sig_results - A cell array containing the significance test
-%                       results for each neuron within each trial group.
 %
 
 fprintf('screen_sc_neurons: Identifying task-modulated neurons...\n');
@@ -200,8 +196,8 @@ else
 
     % Create masks for left and right hemifield trials, but only apply them
     % to the gSac_4factors trials.
-    left_trials_mask = is_4factors_trial & (thetas_all > 90 & thetas_all < 270)';
-    right_trials_mask = is_4factors_trial & (thetas_all < 90 | thetas_all > 270)';
+    left_trials_mask = is_4factors_trial & (thetas_all > 90 & thetas_all < 270);
+    right_trials_mask = is_4factors_trial & (thetas_all < 90 | thetas_all > 270);
 
     % Calculate avg visual FR for left vs. right trials across all neurons.
     mean_vis_fr_left = mean(epoch_frs(:, 2, left_trials_mask), 3, 'omitnan');

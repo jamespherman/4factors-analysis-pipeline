@@ -44,7 +44,7 @@ codes.uniqueTaskCode_gSac_4factors  = 32015;
 
 %% unique codes that are internal to the 'classyStrobe' function class
 % (see pds.classyStrobe.m for more details)
-ss                  = pds.classyStrobe;
+ss                  = classyStrobe;
 codes.isCell        = ss.internalStrobeCodes.isCell;
 codes.cellLength    = ss.internalStrobeCodes.cellLength;
 

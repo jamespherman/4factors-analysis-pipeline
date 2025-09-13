@@ -31,14 +31,12 @@ p = inputParser;
 addRequired(p, 'clusterTimes', @iscell);
 addRequired(p, 'eventTimes', @iscell);
 addParameter(p, 'ClusterGroups', {}, @iscell);
-addParameter(p, 'BinWidth', 0.025, @isscalar);
 addParameter(p, 'TimeRange', [-0.1, 2], @(x) isnumeric(x) && numel(x)==2);
 addParameter(p, 'EventNames', {}, @iscell);
 addParameter(p, 'Title', 'Cluster PSTHs');
 parse(p, clusterTimes, eventTimes, varargin{:});
 
 clusterGroups = p.Results.ClusterGroups;
-binWidth = p.Results.BinWidth;
 timeRange = p.Results.TimeRange;
 eventNames = p.Results.EventNames;
 figureTitle = p.Results.Title;
@@ -71,6 +69,10 @@ if isempty(gcp('nocreate'))
     parpool('local');
 end
 
+% Define binning parameters
+binWidth = 0.2; % 200ms sliding bin
+stepSize = 0.1; % 100ms step size
+
 % loop through all specified clusters and event types to calculate PSTHs
 parfor i = 1:nTotalClusters
     clusterIndex = allClusters(i);
@@ -82,16 +84,21 @@ parfor i = 1:nTotalClusters
     for j = 1:nEventTypes
         currentEventTimes = eventTimes{j};
         
-        % align spikes to events and bin them
-        [~, binnedCounts] = alignAndBinSpikes(spikeTimes, currentEventTimes, timeRange(1), timeRange(2), binWidth);
+        % align spikes to events and bin them using a sliding window
+        [binnedCounts, binCenters, ~] = alignAndBinSpikes(...
+            spikeTimes, currentEventTimes, timeRange(1), ...
+            timeRange(2), binWidth, stepSize);
         
         % calculate confidence interval for the mean binned rate
         meanBinnedRate = mean(binnedCounts) / binWidth;
-        meanBinnedRateCi = bootci(500, @(x) mean(x) / binWidth, binnedCounts);
+        meanBinnedRateCi = bootci(500, @(x) mean(x) / binWidth, ...
+            binnedCounts);
         
         % store results for this event type
         tempResults{j} = struct('index', clusterIndex, ...
-                                'meanBinnedRate', meanBinnedRate, 'meanBinnedRateCi', meanBinnedRateCi);
+            'meanBinnedRate', meanBinnedRate, ...
+            'meanBinnedRateCi', meanBinnedRateCi, ...
+            'binCenters', binCenters);
     end
     % assign the results for the cluster
     results(i, :) = tempResults;
@@ -123,19 +130,25 @@ for i = 1:nTotalClusters
     plotHandles = gobjects(1, nEventTypes);
     
     % plot PSTH with CI for all event types
-    binCenters = timeRange(1)+binWidth/2 : binWidth : timeRange(2)-binWidth/2;
     for j = 1:nEventTypes
         res = results{i,j};
         ci = res.meanBinnedRateCi;
+        binCenters = res.binCenters;
         currentLineStyle = lineStyles{mod(j-1, length(lineStyles)) + 1};
         
         % plot confidence interval shading
         x_fill = [binCenters, fliplr(binCenters)];
         y_fill = [ci(1,:), fliplr(ci(2,:))];
-        fill(x_fill, y_fill, groupColor, 'FaceAlpha', alpha, 'EdgeColor', 'none');
+        fill(x_fill, y_fill, groupColor, 'FaceAlpha', alpha, ...
+            'EdgeColor', 'none');
+
+        % plot mean line using barStairs
+        barStairs(binCenters, res.meanBinnedRate, 'Color', groupColor, ...
+            'LineWidth', 1.5, 'LineStyle', currentLineStyle);
         
-        % plot mean line with a unique line style
-        plotHandles(j) = plot(binCenters, res.meanBinnedRate, 'Color', groupColor, 'LineWidth', 1.5, 'LineStyle', currentLineStyle);
+        % create a dummy plot for the legend handle
+        plotHandles(j) = plot(nan, nan, 'Color', groupColor, ...
+            'LineWidth', 1.5, 'LineStyle', currentLineStyle);
     end
     hold off;
     

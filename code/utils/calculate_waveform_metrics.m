@@ -25,23 +25,37 @@ end
 waveform = waveform(:)'; % Ensure it's a row vector for consistency
 
 % --- Find Peak and Trough ---
-% Following the convention that the peak is the maximum positive
-% deflection and the trough is the subsequent minimum deflection.
+% Anchor on the largest absolute deflection from baseline. This handles
+% both standard (trough-first) and inverted (peak-first) spikes.
 
-% Find the peak of the spike.
-[peak_val, peak_idx] = max(waveform);
+% Find the index of the largest absolute deflection
+[~, idx_abs_max] = max(abs(waveform));
 
-% Find the trough that occurs *after* the peak.
-% We search from the peak index to the end of the waveform.
-[trough_val, trough_idx_relative] = min(waveform(peak_idx:end));
+% Check if this primary deflection is negative (trough) or positive (peak)
+if waveform(idx_abs_max) < 0
+    % The primary deflection is a trough.
+    trough_idx = idx_abs_max;
+    trough_val = waveform(trough_idx);
 
-% The index of the trough must be adjusted to be relative to the entire waveform.
-trough_idx = peak_idx + trough_idx_relative - 1;
+    % Find the subsequent positive peak.
+    [peak_val, temp_idx] = max(waveform(trough_idx:end));
+    peak_idx = temp_idx + trough_idx - 1; % Correct for sub-array indexing
+
+else
+    % The primary deflection is a peak.
+    peak_idx = idx_abs_max;
+    peak_val = waveform(peak_idx);
+
+    % Find the subsequent negative trough.
+    [trough_val, temp_idx] = min(waveform(peak_idx:end));
+    trough_idx = temp_idx + peak_idx - 1; % Correct for sub-array indexing
+end
 
 % --- Calculate Duration ---
 
-% Duration in number of samples
-duration_samples = trough_idx - peak_idx;
+% Duration in number of samples. Use abs because the order of peak and
+% trough is not guaranteed.
+duration_samples = abs(peak_idx - trough_idx);
 
 % Convert duration from samples to milliseconds
 % duration_ms = (duration_in_samples / sampling_rate_in_Hz) * 1000
