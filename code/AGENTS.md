@@ -93,17 +93,17 @@ Example:
 % Load the structure containing all task codes
 codes = initCodes();
 
-% Find the indices of trials that belong to the 'tokens' task
-tokens_trial_indices = session_data.trialInfo.taskCode == codes.uniqueTaskCode_tokens;
+% Find the indices of trials that belong to the '4factors' task
+fourfactors_trial_indices = session_data.trialInfo.taskCode == codes.uniqueTaskCode_4factors;
 
 % Subsequent analyses should use these indices to filter the data
-valid_cue_on_times = session_data.eventTimes.CUE_ON(tokens_trial_indices);
+valid_cue_on_times = session_data.eventTimes.CUE_ON(fourfactors_trial_indices);
 ```
 
 #### **2. Condition Mask Compatibility**
 When creating logical masks for different experimental conditions, ensure they are compatible with the data they are intended to select. This means the masks should have the same number of elements as the trials for the specific task being analyzed.
 
-For example, the `define_task_conditions.m` function is designed to generate condition masks specifically for 'tokens' trials. It first filters the session data to include only rewarded tokens trials and then creates masks that are the same length as this filtered set of trials. This ensures that the masks can be directly applied to `core_data` arrays, which are also filtered for tokens trials.
+For example, the `define_task_conditions.m` function is designed to generate condition masks specifically for '4factors' trials. It first filters the session data to include only rewarded 4factors trials and then creates masks that are the same length as this filtered set of trials. This ensures that the masks can be directly applied to `core_data` arrays, which are also filtered for 4factors trials.
 
 ### **Interpreting Specific Task Data**
 The `gSac_jph` task has special properties that can be leveraged during analysis. Memory-guided saccade trials within this task are intentionally placed at the neuron's estimated receptive/movement field center. This experimental design allows for two major simplifications:
@@ -114,10 +114,10 @@ The `gSac_jph` task has special properties that can be leveraged during analysis
 
 ## Project Root Directory
 
-When writing code that needs to access files or directories relative to the project root, it is important to construct paths correctly. The project root for `tokens-analysis-pipeline` can be found by using the following MATLAB code:
+When writing code that needs to access files or directories relative to the project root, it is important to construct paths correctly. The project root for `4factors-analysis-pipeline` can be found by using the following MATLAB code:
 
 ```matlab
-project_root = fullfile(findOneDrive, 'Code', 'tokens-analysis-pipeline');
+project_root = fullfile(findOneDrive, 'Code', '4factors-analysis-pipeline');
 ```
 
 This will ensure that paths are resolved correctly, regardless of the directory from which the code is executed.

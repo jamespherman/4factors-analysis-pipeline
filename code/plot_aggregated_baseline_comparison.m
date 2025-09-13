@@ -16,7 +16,7 @@ function plot_aggregated_baseline_comparison(aggregated_sc_data, aggregated_snc_
 %% Setup Paths
 % Define the project root, ensure the figures directory exists, and add the
 % 'utils' directory to the path so that helper functions can be found.
-project_root = fullfile(findOneDrive, 'Code', 'tokens-analysis-pipeline');
+project_root = fullfile(findOneDrive, 'Code', '4factors-analysis-pipeline');
 figures_dir = fullfile(project_root, 'figures');
 addpath(fullfile(project_root, 'code', 'utils'));
 
