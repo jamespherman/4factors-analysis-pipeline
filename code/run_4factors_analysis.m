@@ -317,7 +317,7 @@ for i = 1:height(manifest)
                 unique_id, step_counter, n_total_steps);
             giveFeed('--> Running N-way ANOVA');
             session_data = analyze_anova(session_data, core_data, ...
-                conditions);
+                conditions, analysis_plan.anova_plan);
             data_updated = true;
         end
     end
