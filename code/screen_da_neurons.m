@@ -77,7 +77,7 @@ grid on;
 % Save the figure
 fig_filename = fullfile(figures_dir, sprintf('da_screening_%s.pdf', ...
     session_id));
-pdfSave(fig_filename, fig_handle)
+pdfSave(fig_filename, fig_handle.Position(3:4)/72, fig_handle)
 fprintf('... diagnostic plot saved to %s\n', fig_filename);
 close(fig_handle);
 

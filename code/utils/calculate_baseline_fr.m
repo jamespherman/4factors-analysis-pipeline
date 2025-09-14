@@ -1,7 +1,7 @@
 function baseline_frs = calculate_baseline_fr(session_data)
-% calculate_baseline_fr - Computes baseline firing rates for the '4factors' task.
+% calculate_baseline_fr - Computes baseline firing rates for the 'tokens' task.
 %
-% This function is specialized for the '4factors' task. It calculates the
+% This function is specialized for the 'tokens' task. It calculates the
 % mean firing rate for each neuron during a dynamically determined baseline
 % period. The baseline for each trial is the window between the trial's
 % start and the first subsequent event (CUE_ON, pdsOutcomeOn, or reward).
@@ -30,11 +30,11 @@ all_spike_times = session_data.spikes.times;
 all_spike_clusters = session_data.spikes.clusters;
 
 % --- Task-Specific Trial Selection ---
-% Identify trials belonging to the '4factors' task.
-fourfactors_trial_indices = find(session_data.trialInfo.taskCode == codes.uniqueTaskCode_4factors);
+% Identify trials belonging to the 'tokens' task.
+tokens_trial_indices = find(session_data.trialInfo.taskCode == codes.uniqueTaskCode_tokens);
 
-if isempty(fourfactors_trial_indices)
-    fprintf("Warning in calculate_baseline_fr: No '4factors' task trials found.\n");
+if isempty(tokens_trial_indices)
+    fprintf("Warning in calculate_baseline_fr: No 'tokens' task trials found.\n");
     baseline_frs = zeros(nNeurons, 1);
     return;
 end
@@ -54,8 +54,8 @@ for i_neuron = 1:nNeurons
     end
 
     % --- Dynamic Baseline Window Calculation ---
-    for i_trial = 1:length(fourfactors_trial_indices)
-        trial_idx = fourfactors_trial_indices(i_trial);
+    for i_trial = 1:length(tokens_trial_indices)
+        trial_idx = tokens_trial_indices(i_trial);
         trial_start_time = session_data.eventTimes.trialBegin(trial_idx);
 
         % Convert event times to trial-relative time for comparison.

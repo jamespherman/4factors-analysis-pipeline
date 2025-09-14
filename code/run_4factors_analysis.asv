@@ -1,6 +1,6 @@
-%% run_tokens_analysis.m
+%% run_4factors_analysis.m
 %
-% Main script to run the entire tokens task analysis pipeline. It iterates
+% Main script to run the entire 4factors task analysis pipeline. It iterates
 % through a session manifest, performs neuron screening, prepares core
 % data, and runs a series of specified analyses based on a centralized plan.
 %
@@ -8,7 +8,7 @@
 % step in the manifest and skips steps that are already marked 'complete'.
 %
 % Author: Jules
-% Date: 2025-09-12 (Refactored)
+% Date: 2025-09-13
 %
 
 %% Setup
@@ -35,7 +35,7 @@ giveFeed = @(x)disp([num2str(round(toc, 1)) 's - ' x]);
 giveFeed('Loading session manifest...');
 manifest_path = fullfile(project_root, 'config', 'session_manifest.csv');
 if ~exist(manifest_path, 'file')
-    error('run_tokens_analysis:manifestNotFound', ...
+    error('run_4factors_analysis:manifestNotFound', ...
         'Session manifest not found at: %s', manifest_path);
 end
 manifest = readtable(manifest_path);
@@ -60,16 +60,33 @@ for i = 1:height(manifest)
         '_session_data.mat']);
 
     if ~exist(session_data_path, 'file')
-        warning('run_tokens_analysis:sessionDataNotFound', ...
+        warning('run_4factors_analysis:sessionDataNotFound', ...
             'session_data.mat not found for %s. Skipping.', ...
             session_id);
         continue;
     end
 
+    % tell user data is being loaded, then load data, then tell user data
+    % was loaded:
     giveFeed(sprintf('Loading data for %s...', session_id));
     load(session_data_path, 'session_data');
     giveFeed('Data loaded.');
 
+    % assume that data has not been updated:
+    data_updated = false;
+
+    % Check to see if metadata matches expectations. Define a temporary
+    % structure holding metadata from manifest, loop over fields and see if
+    % they match what is in 'session_data' already. If not, update
+    % session_data and set 'data_updated' to 'true'.
+    temp_metadata = table2struct(manifest(i,:));
+    field_names = fieldna
+
+    keyboard
+
+    session_data.metadata = table2struct(manifest(i,:));
+
+    % assume that data has not been updated:
     data_updated = false;
 
     % --- Define Task Conditions for this session ---
@@ -85,7 +102,8 @@ for i = 1:height(manifest)
     if ~isfield(session_data, 'metrics') || force_rerun.screening
         n_total_steps = n_total_steps + 1;
     end
-    if ~strcmp(manifest.screening_status{i}, 'complete') || force_rerun.screening
+    if ~strcmp(manifest.screening_status{i}, 'complete') || ...
+            force_rerun.screening
         n_total_steps = n_total_steps + 1;
     end
     diag_output_dir_dry_run = fullfile(project_root, 'figures', unique_id);
@@ -93,26 +111,29 @@ for i = 1:height(manifest)
             isempty(dir(fullfile(diag_output_dir_dry_run, '*.pdf'))))
         n_total_steps = n_total_steps + 1;
     end
-    if ~strcmp(manifest.dataprep_status{i}, 'complete') || force_rerun.dataprep
+    if ~strcmp(manifest.dataprep_status{i}, 'complete') || ...
+            force_rerun.dataprep
         n_total_steps = n_total_steps + 1;
     end
 
     % Count planned analyses
     for j = 1:length(analysis_plan.baseline_plan)
         comp = analysis_plan.baseline_plan(j);
-        if (~isfield(session_data, 'analysis') || ...
-           ~isfield(session_data.analysis, 'baseline_comparison') || ...
-           ~isfield(session_data.analysis.baseline_comparison, comp.name)) ...
-           || force_rerun.analyses
+        path_to_check = fullfile('analysis', 'baseline_comparison', 'CUE_ON', comp.name);
+        S = substruct('.', strsplit(path_to_check, '/'));
+        try
+            subsref(session_data, S);
+        catch
             n_total_steps = n_total_steps + 1;
         end
     end
     for j = 1:length(analysis_plan.roc_plan)
         comp = analysis_plan.roc_plan(j);
-        if (~isfield(session_data, 'analysis') || ...
-           ~isfield(session_data.analysis, 'roc_comparison') || ...
-           ~isfield(session_data.analysis.roc_comparison, comp.name)) ...
-           || force_rerun.analyses
+        path_to_check = fullfile('analysis', 'roc_comparison', comp.event, comp.name);
+        S = substruct('.', strsplit(path_to_check, '/'));
+        try
+            subsref(session_data, S);
+        catch
             n_total_steps = n_total_steps + 1;
         end
     end
@@ -137,17 +158,17 @@ for i = 1:height(manifest)
         giveFeed('Screening status is ''pending''. Running screening...');
 
         session_data.metadata.unique_id = session_id;
-        if contains(session_id, 'SNc')
+        if strcmp(session_data.metadata.brain_area, 'SNc')
             selected_neurons = screen_da_neurons(session_data, session_id);
-        elseif contains(session_id, 'SC')
+        elseif strcmp(session_data.metadata.brain_area, 'SC')
             [selected_neurons, sig_epoch_comp, scSide] = ...
                 screen_sc_neurons(session_data);
             session_data.analysis.scSide = scSide;
             session_data.analysis.sig_epoch_comparison = sig_epoch_comp;
         else
-            warning('run_tokens_analysis:unknownSessionType', ...
-                'Unknown session type for %s. Cannot screen neurons.', ...
-                session_id);
+            warning('run_4factors_analysis:unknownSessionType', ...
+                'Unknown brain_area ''%s'' for session %s. Cannot screen neurons.', ...
+                session_data.metadata.brain_area, session_id);
             continue;
         end
 
@@ -167,7 +188,7 @@ for i = 1:height(manifest)
 
     % Check if the directory exists and contains any PDF files
     if (~exist(diag_output_dir, 'dir') || isempty(dir(fullfile( ...
-            diag_output_dir, '*.pdf')))) || force_rerun.diag_pdfs 
+            diag_output_dir, '*.pdf')))) || force_rerun.diag_pdfs
         step_counter = step_counter + 1;
         fprintf(['\n--- Session %s: Starting Step %d of %d: ' ...
             'Diagnostic PDF Generation ---\n'], unique_id, ...
@@ -192,7 +213,28 @@ for i = 1:height(manifest)
             step_counter, n_total_steps);
         giveFeed(['Data prep status is ''pending''. ' ...
             '            Running prepare_core_data...']);
-        core_data = prepare_core_data(session_data, selected_neurons);
+
+        % --- Integration of Analysis Plan for Data Prep ---
+        % Call define_task_conditions without arguments to get the plan.
+        [~, ~, analysis_plan_for_prep] = define_task_conditions();
+
+        % Dynamically generate the list of required alignment events from the plan.
+        all_events_prep = {};
+        plan_fields_prep = fieldnames(analysis_plan_for_prep);
+        for i_field = 1:length(plan_fields_prep)
+            sub_plan = analysis_plan_for_prep.(plan_fields_prep{i_field});
+            if isstruct(sub_plan)
+                for j = 1:length(sub_plan)
+                    if isfield(sub_plan(j), 'event')
+                        all_events_prep{end+1} = sub_plan(j).event;
+                    end
+                end
+            end
+        end
+        alignment_events_prep = unique(all_events_prep);
+
+        % Now call prepare_core_data with the dynamic events.
+        core_data = prepare_core_data(session_data, selected_neurons, alignment_events_prep);
         session_data.analysis.core_data = core_data;
 
         data_updated = true; % Mark data as updated
@@ -211,19 +253,38 @@ for i = 1:height(manifest)
         comp = analysis_plan.baseline_plan(j);
         if comp.is_av_only && ~is_av_session, continue; end
 
-        if (~isfield(session_data, 'analysis') || ...
-           ~isfield(session_data.analysis, 'baseline_comparison') || ...
-           ~isfield(session_data.analysis.baseline_comparison, ...
-           comp.name)) || force_rerun.analyses
+        % Check for existence of the new, nested structure. We check for
+        % the first event ('CUE_ON') as a proxy for the whole analysis.
+        run_this_analysis = force_rerun.analyses;
+        if ~run_this_analysis
+            path_to_check = fullfile('analysis', 'baseline_comparison', 'CUE_ON', comp.name);
+            S = substruct('.', strsplit(path_to_check, '/'));
+            try
+                subsref(session_data, S);
+            catch
+                run_this_analysis = true;
+            end
+        end
+
+        if run_this_analysis
             step_counter = step_counter + 1;
             fprintf(['\n--- Session %s: Step %d/%d: Baseline ' ...
                 'Comparison for %s ---\n'], unique_id, step_counter, ...
                 n_total_steps, comp.name);
             giveFeed(sprintf('--> Running Baseline Comparison: %s', ...
                 comp.name));
-            result = analyze_baseline_comparison(core_data, conditions, ...
-                is_av_session, 'condition', comp.name);
-            session_data.analysis.baseline_comparison.(comp.name) = result;
+
+            % This function returns a struct with event names as fields
+            result_by_event = analyze_baseline_comparison(core_data, ...
+                conditions, is_av_session, 'condition', comp.name);
+
+            % Merge the results into the new standardized structure
+            event_names = fieldnames(result_by_event);
+            for k = 1:length(event_names)
+                event_name = event_names{k};
+                session_data.analysis.baseline_comparison.(event_name).(comp.name) = ...
+                    result_by_event.(event_name);
+            end
             data_updated = true;
         end
     end
@@ -233,19 +294,32 @@ for i = 1:height(manifest)
         comp = analysis_plan.roc_plan(j);
         if comp.is_av_only && ~is_av_session, continue; end
 
-        if (~isfield(session_data, 'analysis') || ...
-           ~isfield(session_data.analysis, 'roc_comparison') || ...
-           ~isfield(session_data.analysis.roc_comparison, comp.name)) ...
-           || force_rerun.analyses
+        % Check for the existence of the new, nested structure.
+        run_this_analysis = force_rerun.analyses;
+        if ~run_this_analysis
+            path_to_check = fullfile('analysis', 'roc_comparison', comp.event, comp.name);
+            S = substruct('.', strsplit(path_to_check, '/'));
+            try
+                subsref(session_data, S);
+            catch
+                run_this_analysis = true;
+            end
+        end
+
+        if run_this_analysis
             step_counter = step_counter + 1;
             fprintf(['\n--- Session %s: Step %d/%d: ROC Comparison ' ...
                 'for %s ---\n'], unique_id, step_counter, ...
                 n_total_steps, comp.name);
             giveFeed(sprintf('--> Running ROC Comparison: %s', comp.name));
+
+            % This function now returns a result nested by event name
             result = analyze_roc_comparison(core_data, conditions, ...
                 is_av_session, 'comparison', comp);
-            session_data.analysis.roc_comparison.(comp.name) = ...
-                result.(comp.name);
+
+            % Store the result in the new standardized structure
+            session_data.analysis.roc_comparison.(comp.event).(comp.name) = ...
+                result.(comp.event).(comp.name);
             data_updated = true;
         end
     end
@@ -277,20 +351,27 @@ for i = 1:height(manifest)
 
     % --- Verify Analysis Completion & Update Manifest ---
     is_analysis_complete = true;
+    % Check baseline comparisons
     for j = 1:length(analysis_plan.baseline_plan)
         comp = analysis_plan.baseline_plan(j);
-        if ~isfield(session_data, 'analysis') || ...
-           ~isfield(session_data.analysis, 'baseline_comparison') || ...
-           ~isfield(session_data.analysis.baseline_comparison, comp.name)
+        % Check for the first event as a proxy
+        path_to_check = fullfile('analysis', 'baseline_comparison', 'CUE_ON', comp.name);
+        S = substruct('.', strsplit(path_to_check, '/'));
+        try
+            subsref(session_data, S);
+        catch
             is_analysis_complete = false; break;
         end
     end
+    % Check ROC comparisons
     if is_analysis_complete
         for j = 1:length(analysis_plan.roc_plan)
             comp = analysis_plan.roc_plan(j);
-            if ~isfield(session_data, 'analysis') || ...
-               ~isfield(session_data.analysis, 'roc_comparison') || ...
-               ~isfield(session_data.analysis.roc_comparison, comp.name)
+            path_to_check = fullfile('analysis', 'roc_comparison', comp.event, comp.name);
+            S = substruct('.', strsplit(path_to_check, '/'));
+            try
+                subsref(session_data, S);
+            catch
                 is_analysis_complete = false; break;
             end
         end

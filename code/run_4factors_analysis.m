@@ -66,10 +66,16 @@ for i = 1:height(manifest)
         continue;
     end
 
+    % tell user data is being loaded, then load data, then tell user data
+    % was loaded:
     giveFeed(sprintf('Loading data for %s...', session_id));
     load(session_data_path, 'session_data');
     giveFeed('Data loaded.');
 
+    % make sure we have all our metadata:
+    session_data.metadata = table2struct(manifest(i,:));
+
+    % assume that data has not been updated:
     data_updated = false;
 
     % --- Define Task Conditions for this session ---

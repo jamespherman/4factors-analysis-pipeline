@@ -17,7 +17,7 @@ function [conditions, is_av_session, condition_defs] = define_task_conditions(tr
 
 %% --- I. Define the Comprehensive Analysis Plan ---
 % This section defines the entire analysis plan. It is used by the main
-% pipeline script, `run_4factors_analysis.m`, to determine which analyses
+% pipeline script, `run_tokens_analysis.m`, to determine which analyses
 % to run.
 
 % A. Canonical Names for Condition Masks
@@ -67,12 +67,21 @@ for i = 1:length(baseline_conditions)
 end
 
 % D. N-way ANOVA Plan
-% Defines the parameters for the N-way ANOVA analysis.
-condition_defs.anova_plan.run = true;
-condition_defs.anova_plan.fields_to_aggregate = { ...
+% Each element defines an N-way ANOVA to be run.
+%   .event:           Alignment event (e.g., 'CUE_ON', 'outcomeOn').
+%   .p_value_names:   Name of the p-value fields to aggregate.
+%   .run:             Boolean, true to run the analysis.
+condition_defs.anova_plan = struct('event', {}, 'p_value_names', {}, 'run', {});
+events_for_anova = {'CUE_ON', 'outcomeOn', 'reward'};
+p_value_fields = { ...
     'p_value_reward', 'p_value_stim_id', 'p_value_interaction', ...
     'p_value_flicker', 'p_value_flicker_x_reward' ...
-    };
+};
+for i = 1:length(events_for_anova)
+    condition_defs.anova_plan(i).event = events_for_anova{i};
+    condition_defs.anova_plan(i).p_value_names = p_value_fields;
+    condition_defs.anova_plan(i).run = true;
+end
 
 
 %% --- II. Mode Dispatch ---
@@ -92,17 +101,17 @@ end
 codes = initCodes;
 is_av_session = isfield(trialInfo, 'isAVTrial');
 
-is_4factors_trial = (trialInfo.taskCode == codes.uniqueTaskCode_4factors) & ...
+is_tokens_trial = (trialInfo.taskCode == codes.uniqueTaskCode_tokens) & ...
     ~cellfun(@isempty, eventTimes.rewardCell) & ...
     ~cellfun(@isempty, trialInfo.cueFile);
 
-trialInfo.cueFile = trialInfo.cueFile(is_4factors_trial);
-trialInfo.dist = trialInfo.dist(is_4factors_trial);
-trialInfo.rewardAmt = trialInfo.rewardAmt(is_4factors_trial);
+trialInfo.cueFile = trialInfo.cueFile(is_tokens_trial);
+trialInfo.dist = trialInfo.dist(is_tokens_trial);
+trialInfo.rewardAmt = trialInfo.rewardAmt(is_tokens_trial);
 if is_av_session
-    trialInfo.isAVTrial = trialInfo.isAVTrial(is_4factors_trial);
+    trialInfo.isAVTrial = trialInfo.isAVTrial(is_tokens_trial);
 end
-eventTimes.reward = eventTimes.reward(is_4factors_trial);
+eventTimes.reward = eventTimes.reward(is_tokens_trial);
 
 % B. Foundational Conditions
 conditions.is_familiar = contains(trialInfo.cueFile, 'fam');
