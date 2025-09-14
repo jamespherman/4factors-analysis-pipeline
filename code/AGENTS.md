@@ -8,10 +8,13 @@
 
 ## IMPORTANT: Data Structures
 
-**Before writing or modifying any code that interacts with `session_data.mat` files, you MUST consult the data dictionary.**
+**Before writing or modifying any code that interacts with `session_data.mat` files, you MUST consult the data dictionaries.**
 
-The canonical definition for the main data structure, `session_data`, is located in:
+The canonical definition for the main `session_data` structure is located in:
 `docs/preprocessing_docs/session_data_dictionary.md`
+
+For analyses driven by the `define_task_conditions.m` function, you must also consult the `analysis_plan` definition in:
+`docs/analysis_data_dictionary.md`
 
 Do not make assumptions about the fields or layout of this structure. The documentation is the single source of truth. For example:
 - The number of clusters/neurons should be derived from `session_data.spikes.cluster_info`, not a field like `nClusters`.

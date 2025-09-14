@@ -45,7 +45,7 @@ giveFeed('Manifest loaded.');
 giveFeed('Loading analysis plan...');
 % The single source of truth for the analysis plan is now
 % define_task_conditions. We call it without arguments to get the plan.
-[~, ~, analysis_plan] = define_task_conditions();
+analysis_plan = define_4factors_task_conditions();
 giveFeed('Analysis plan loaded.');
 
 %% Iterate Through Sessions
@@ -80,9 +80,7 @@ for i = 1:height(manifest)
 
     % --- Define Task Conditions for this session ---
     giveFeed('Defining task conditions...');
-    [conditions, is_av_session] = define_task_conditions( ...
-        session_data.trialInfo, ...
-        session_data.eventTimes, session_data.metadata.unique_id);
+    conditions = define_4factors_task_conditions(session_data);
     giveFeed('Task conditions defined.');
 
     % --- Dry run to calculate total number of steps for this session ---
@@ -106,9 +104,9 @@ for i = 1:height(manifest)
     end
 
     % Count planned analyses
-    for j = 1:length(analysis_plan.baseline_plan)
-        comp = analysis_plan.baseline_plan(j);
-        path_to_check = fullfile('analysis', 'baseline_comparison', 'CUE_ON', comp.name);
+    for j = 1:length(analysis_plan.baseline_comparison.conditions_to_run)
+        comp_name = analysis_plan.baseline_comparison.conditions_to_run{j};
+        path_to_check = fullfile('analysis', 'baseline_comparison', 'targetOn', comp_name);
         S = substruct('.', strsplit(path_to_check, '/'));
         try
             subsref(session_data, S);
@@ -116,8 +114,8 @@ for i = 1:height(manifest)
             n_total_steps = n_total_steps + 1;
         end
     end
-    for j = 1:length(analysis_plan.roc_plan)
-        comp = analysis_plan.roc_plan(j);
+    for j = 1:length(analysis_plan.roc_comparison.comparisons_to_run)
+        comp = analysis_plan.roc_comparison.comparisons_to_run(j);
         path_to_check = fullfile('analysis', 'roc_comparison', comp.event, comp.name);
         S = substruct('.', strsplit(path_to_check, '/'));
         try
@@ -205,7 +203,7 @@ for i = 1:height(manifest)
 
         % --- Integration of Analysis Plan for Data Prep ---
         % Call define_task_conditions without arguments to get the plan.
-        [~, ~, analysis_plan_for_prep] = define_task_conditions();
+        analysis_plan_for_prep = define_4factors_task_conditions();
 
         % Dynamically generate the list of required alignment events from the plan.
         all_events_prep = {};
@@ -238,15 +236,14 @@ for i = 1:height(manifest)
     giveFeed('Checking for missing analyses...');
 
     % A. Baseline Comparison Analyses
-    for j = 1:length(analysis_plan.baseline_plan)
-        comp = analysis_plan.baseline_plan(j);
-        if comp.is_av_only && ~is_av_session, continue; end
+    for j = 1:length(analysis_plan.baseline_comparison.conditions_to_run)
+        comp_name = analysis_plan.baseline_comparison.conditions_to_run{j};
 
         % Check for existence of the new, nested structure. We check for
-        % the first event ('CUE_ON') as a proxy for the whole analysis.
+        % the first event ('targetOn') as a proxy for the whole analysis.
         run_this_analysis = force_rerun.analyses;
         if ~run_this_analysis
-            path_to_check = fullfile('analysis', 'baseline_comparison', 'CUE_ON', comp.name);
+            path_to_check = fullfile('analysis', 'baseline_comparison', 'targetOn', comp_name);
             S = substruct('.', strsplit(path_to_check, '/'));
             try
                 subsref(session_data, S);
@@ -259,19 +256,19 @@ for i = 1:height(manifest)
             step_counter = step_counter + 1;
             fprintf(['\n--- Session %s: Step %d/%d: Baseline ' ...
                 'Comparison for %s ---\n'], unique_id, step_counter, ...
-                n_total_steps, comp.name);
+                n_total_steps, comp_name);
             giveFeed(sprintf('--> Running Baseline Comparison: %s', ...
-                comp.name));
+                comp_name));
 
             % This function returns a struct with event names as fields
             result_by_event = analyze_baseline_comparison(core_data, ...
-                conditions, is_av_session, 'condition', comp.name);
+                conditions, 'condition', comp_name);
 
             % Merge the results into the new standardized structure
             event_names = fieldnames(result_by_event);
             for k = 1:length(event_names)
                 event_name = event_names{k};
-                session_data.analysis.baseline_comparison.(event_name).(comp.name) = ...
+                session_data.analysis.baseline_comparison.(event_name).(comp_name) = ...
                     result_by_event.(event_name);
             end
             data_updated = true;
@@ -279,9 +276,8 @@ for i = 1:height(manifest)
     end
 
     % B. ROC Comparison Analyses
-    for j = 1:length(analysis_plan.roc_plan)
-        comp = analysis_plan.roc_plan(j);
-        if comp.is_av_only && ~is_av_session, continue; end
+    for j = 1:length(analysis_plan.roc_comparison.comparisons_to_run)
+        comp = analysis_plan.roc_comparison.comparisons_to_run(j);
 
         % Check for the existence of the new, nested structure.
         run_this_analysis = force_rerun.analyses;
@@ -303,12 +299,10 @@ for i = 1:height(manifest)
             giveFeed(sprintf('--> Running ROC Comparison: %s', comp.name));
 
             % This function now returns a result nested by event name
-            result = analyze_roc_comparison(core_data, conditions, ...
-                is_av_session, 'comparison', comp);
+            result = analyze_roc_comparison(core_data, conditions, 'comparison', comp);
 
             % Store the result in the new standardized structure
-            session_data.analysis.roc_comparison.(comp.event).(comp.name) = ...
-                result.(comp.event).(comp.name);
+            session_data.analysis.roc_comparison.(comp.event).(comp.name) = result;
             data_updated = true;
         end
     end
@@ -341,10 +335,10 @@ for i = 1:height(manifest)
     % --- Verify Analysis Completion & Update Manifest ---
     is_analysis_complete = true;
     % Check baseline comparisons
-    for j = 1:length(analysis_plan.baseline_plan)
-        comp = analysis_plan.baseline_plan(j);
+    for j = 1:length(analysis_plan.baseline_comparison.conditions_to_run)
+        comp_name = analysis_plan.baseline_comparison.conditions_to_run{j};
         % Check for the first event as a proxy
-        path_to_check = fullfile('analysis', 'baseline_comparison', 'CUE_ON', comp.name);
+        path_to_check = fullfile('analysis', 'baseline_comparison', 'targetOn', comp_name);
         S = substruct('.', strsplit(path_to_check, '/'));
         try
             subsref(session_data, S);
@@ -354,8 +348,8 @@ for i = 1:height(manifest)
     end
     % Check ROC comparisons
     if is_analysis_complete
-        for j = 1:length(analysis_plan.roc_plan)
-            comp = analysis_plan.roc_plan(j);
+        for j = 1:length(analysis_plan.roc_comparison.comparisons_to_run)
+            comp = analysis_plan.roc_comparison.comparisons_to_run(j);
             path_to_check = fullfile('analysis', 'roc_comparison', comp.event, comp.name);
             S = substruct('.', strsplit(path_to_check, '/'));
             try

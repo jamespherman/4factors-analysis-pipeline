@@ -28,7 +28,7 @@ addpath(project_root);
 giveFeed('Loading session manifest and analysis plan...');
 manifest_path = fullfile(project_root, 'config', 'session_manifest.csv');
 manifest = readtable(manifest_path);
-[~, ~, analysis_plan] = define_task_conditions(); % Get the canonical plan
+[~, ~, analysis_plan] = define_tokens_task_conditions(); % Get the canonical plan
 baseline_events = {'CUE_ON', 'outcomeOn', 'reward'}; % This is hard-coded in the analysis fn
 giveFeed('Manifest and plan loaded.');
 
