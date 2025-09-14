@@ -30,6 +30,11 @@ function generate_neuron_summary_pdf(session_data, ...
 [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
 addpath(fullfile(script_dir, 'utils'));
 
+%% Analysis Plan
+% Retrieve the analysis plan and session-specific condition masks.
+analysis_plan = define_task_conditions();
+condition_masks = define_task_conditions(session_data);
+
 %% Constants
 % Define constants for plot layout and analysis parameters.
 N_ROWS = 12;
@@ -65,40 +70,7 @@ nClusters = height(cluster_info.cluster_id);
 all_spike_times = session_data.spikes.times;
 all_spike_clusters = session_data.spikes.clusters;
 
-% --- Check for required data ---
-codes = initCodes;
-gSac_task_code = codes.uniqueTaskCode_gSac_4factors;
-has_gSac_trials = any(session_data.trialInfo.taskCode == ...
-    gSac_task_code);
-has_gSac_events = isfield(session_data.eventTimes, 'targetOn') && ...
-                  isfield(session_data.eventTimes, 'saccadeOnset');
-do_spatial_tuning_plot = has_gSac_trials && has_gSac_events;
-
-% Identify gSac_jph memory-guided saccade trials with valid reward
-% times
-gSac_jph_task_code = codes.uniqueTaskCode_gSac_jph;
-has_gSac_jph_trials = any(session_data.trialInfo.taskCode == ...
-    gSac_jph_task_code);
-gSac_jph_memSac_trials = [];
-if has_gSac_jph_trials
-    has_required_fields = isfield(session_data.eventTimes, ...
-        'targetReillum') && isfield(session_data.eventTimes, ...
-        'pdsReward');
-    if has_required_fields
-        gSac_jph_memSac_trials = find(...
-            session_data.trialInfo.taskCode == gSac_jph_task_code & ...
-            ~isnan(session_data.eventTimes.targetReillum) & ...
-            session_data.eventTimes.pdsReward > 0);
-    else
-        has_gSac_jph_trials = false;
-    end
-end
-
-% Identify valid 4factors task trials:
-fourfactors_task_code = codes.uniqueTaskCode_4factors;
-fourfactors_trials = session_data.trialInfo.taskCode == ...
-    fourfactors_task_code & ~cellfun(@isempty, ...
-    session_data.eventTimes.rewardCell);
+% This space is intentionally left blank.
 
 % Loop through each cluster to create a page of plots
 for i_cluster = 1:nClusters
@@ -160,129 +132,87 @@ for i_cluster = 1:nClusters
             'HorizontalAlignment', 'center');
     end
 
-    % CUE_ON PSTH and Raster (Position 3)
-    ax_raster_cue = mySubPlot([N_ROWS, N_COLS2, right_plot_indices(1,1)]);
-    set(ax_raster_cue, 'Tag', 'Raster_Axis');
-    ax_psth_cue = mySubPlot([N_ROWS, N_COLS2, right_plot_indices(1,1) ...
-        + N_COLS2]);
-    set(ax_psth_cue, 'Tag', 'PSTH_Axis');
-    if isfield(session_data.eventTimes, 'CUE_ON')
-        event_times = session_data.eventTimes.CUE_ON;
-        valid_trials = fourfactors_trials & event_times > 0;
-        plot_psth_and_raster(ax_raster_cue, ax_psth_cue, spike_times, ...
-            event_times(valid_trials), PSTH_WINDOW, 'Cue On (4factors)', ...
-            'Time from Cue On (s)', true, SLIDING_BIN_WIDTH, ...
-            SLIDING_STEP_SIZE);
-    else
-        text(0.5, 0.5, 'No CUE_ON event', 'Parent', ax_raster_cue, ...
-            'HorizontalAlignment', 'center');
-    end
+    %% --- Dynamic PSTH and Raster Plots ---
+    n_diag_plots = numel(analysis_plan.diagnostic_plots);
 
-    % outcomeOn PSTH and Raster (Position 4)
-    ax_raster_outcome = mySubPlot([N_ROWS, N_COLS2, ...
-        right_plot_indices(1,2)]);
-    set(ax_raster_outcome, 'Tag', 'Raster_Axis');
-    ax_psth_outcome = mySubPlot([N_ROWS, N_COLS2, ...
-        right_plot_indices(1,2) + N_COLS2]);
-    set(ax_psth_outcome, 'Tag', 'PSTH_Axis');
-    if isfield(session_data.eventTimes, 'outcomeOn')
-        event_times = session_data.eventTimes.outcomeOn;
-        valid_trials = fourfactors_trials & event_times > 0;
-        plot_psth_and_raster(ax_raster_outcome, ax_psth_outcome, ...
-            spike_times, ...
-            event_times(valid_trials), PSTH_WINDOW, ...
-            'Outcome (4factors)', 'Time from Outcome (s)', false, ...
-            SLIDING_BIN_WIDTH, SLIDING_STEP_SIZE);
-    else
-        text(0.5, 0.5, 'No outcome event', 'Parent', ax_raster_outcome, ...
-            'HorizontalAlignment', 'center');
-    end
+    for i_plot = 1:n_diag_plots
+        plot_def = analysis_plan.diagnostic_plots(i_plot);
+        event_name = plot_def.event;
+        plot_title = plot_def.title;
+        conditions_to_compare = plot_def.conditions_to_compare;
 
-    if do_spatial_tuning_plot
-        %% --- Spatial Tuning Plots ---
-        % --- Data Setup for Spatial Tuning ---
-        gSac_trial_idx = session_data.trialInfo.taskCode == ...
-            gSac_task_code;
-        unique_thetas = unique(session_data.trialInfo.targetTheta( ...
-            gSac_trial_idx));
-        n_thetas_gSac = numel(unique_thetas);
+        % Create axes for the raster and PSTH plots
+        ax_raster = mySubPlot([N_ROWS, N_COLS2, right_plot_indices(1, i_plot)]);
+        set(ax_raster, 'Tag', 'Raster_Axis');
+        ax_psth = mySubPlot([N_ROWS, N_COLS2, right_plot_indices(1, i_plot) + N_COLS2]);
+        set(ax_psth, 'Tag', 'PSTH_Axis');
 
-        unique_thetas_jph = [];
-        if has_gSac_jph_trials && ~isempty(gSac_jph_memSac_trials)
-            unique_thetas_jph = unique( ...
-                session_data.trialInfo.targetTheta( ...
-                gSac_jph_memSac_trials));
-        end
-        n_thetas_jph = numel(unique_thetas_jph);
+        hold(ax_psth, 'on');
 
-        % --- Column 5-6: PSTHs for gSac Tasks ---
-        % gSac_4factors task
-        for i_theta = 1:n_thetas_gSac
-            row_offset = (i_theta - 1) * 8;
-            current_theta = unique_thetas(i_theta);
-            theta_trials = gSac_trial_idx & ...
-                (session_data.trialInfo.targetTheta == current_theta);
+        colors = richColors(numel(conditions_to_compare));
+        all_event_times_for_raster = [];
 
-            % Aligned to Target On
-            ax_r = mySubPlot([psth_grid, 11 + row_offset]);
-            set(ax_r, 'Tag', 'Raster_Axis');
-            ax_p = mySubPlot([psth_grid, 11 + 4 + row_offset]);
-            set(ax_p, 'Tag', 'PSTH_Axis');
-            et = session_data.eventTimes.targetOn(theta_trials);
-            plot_psth_and_raster(ax_r, ax_p, spike_times, et, ...
-                PSTH_WINDOW, sprintf('Target On (gSac): %d deg', ...
-                current_theta), 'Time from Target On (s)', ...
-                i_theta == 1, SLIDING_BIN_WIDTH, SLIDING_STEP_SIZE);
-            if i_theta < n_thetas_gSac, set(ax_p, 'xticklabel', {[]}); end
+        for i_cond = 1:numel(conditions_to_compare)
+            cond_name = conditions_to_compare{i_cond};
 
-            % Aligned to Saccade Onset
-            ax_r = mySubPlot([psth_grid, 12 + row_offset]);
-            set(ax_r, 'Tag', 'Raster_Axis');
-            ax_p = mySubPlot([psth_grid, 12 + 4 + row_offset]);
-            set(ax_p, 'Tag', 'PSTH_Axis');
-            et = session_data.eventTimes.saccadeOnset(theta_trials);
-            plot_psth_and_raster(ax_r, ax_p, spike_times, et, ...
-                PSTH_WINDOW, 'Saccade Onset (gSac)', ...
-                'Time from Saccade Onset (s)', false, ...
-                SLIDING_BIN_WIDTH, SLIDING_STEP_SIZE);
-            if i_theta < n_thetas_gSac, set(ax_p, 'xticklabel', {[]}); end
-        end
+            % Get trial indices for the current condition
+            trial_mask = condition_masks.(cond_name);
 
-        % gSac_jph task
-        if n_thetas_jph > 0
-            i_theta_jph = 1; % For now, only plot the first one
-            current_theta = unique_thetas_jph(i_theta_jph);
-            theta_trials_in_mem_sac = ...
-                session_data.trialInfo.targetTheta( ...
-                gSac_jph_memSac_trials) == current_theta;
-            final_indices = gSac_jph_memSac_trials(...
-                theta_trials_in_mem_sac);
+            % Get valid event times for these trials
+            event_times = session_data.eventTimes.(event_name)(trial_mask);
+            event_times = event_times(~isnan(event_times) & event_times > 0);
 
-            % Aligned to Target On
-            ax_r = mySubPlot([psth_grid, 43]);
-            set(ax_r, 'Tag', 'Raster_Axis');
-            ax_p = mySubPlot([psth_grid, 43 + 4]);
-            set(ax_p, 'Tag', 'PSTH_Axis');
-            et = session_data.eventTimes.targetOn(final_indices);
-            plot_psth_and_raster(ax_r, ax_p, spike_times, et, ...
-                PSTH_WINDOW, sprintf('Target On (jph): %d deg', ...
-                current_theta), 'Time from Target On (s)', true, ...
+            if isempty(event_times)
+                continue;
+            end
+
+            all_event_times_for_raster = [all_event_times_for_raster; event_times];
+
+            % Calculate PSTH for the current condition
+            [psth, bin_centers, ~] = alignAndBinSpikes(spike_times, ...
+                event_times, PSTH_WINDOW(1), PSTH_WINDOW(2), ...
                 SLIDING_BIN_WIDTH, SLIDING_STEP_SIZE);
 
-            % Aligned to Saccade Onset
-            ax_r = mySubPlot([psth_grid, 44]);
-            set(ax_r, 'Tag', 'Raster_Axis');
-            ax_p = mySubPlot([psth_grid, 44 + 4]);
-            set(ax_p, 'Tag', 'PSTH_Axis');
-            et = session_data.eventTimes.saccadeOnset(final_indices);
-            plot_psth_and_raster(ax_r, ax_p, spike_times, et, ...
-                PSTH_WINDOW, 'Saccade Onset (jph)', ...
-                'Time from Saccade Onset (s)', false, ...
-                SLIDING_BIN_WIDTH, SLIDING_STEP_SIZE);
+            n_trials = size(psth, 1);
+            if n_trials == 0
+                continue;
+            end
+
+            mean_rate = sum(psth, 1, 'omitnan') / (n_trials * SLIDING_BIN_WIDTH);
+
+            % Plot the mean PSTH for the current condition
+            hBS = barStairsFill(bin_centers, zeros(size(mean_rate)), mean_rate);
+            delete(hBS(1:2)); % Keep only the line for overlay
+            set(hBS(3), 'Color', colors(i_cond,:));
         end
-    else
-        % This block is intentionally left empty because the top-panel
-        % diagnostics are now handled before the `if` statement.
+
+        % Create a single raster plot for all conditions
+        if ~isempty(all_event_times_for_raster)
+            [psth_raster, bin_centers_raster, ~] = alignAndBinSpikes(spike_times, ...
+                all_event_times_for_raster, PSTH_WINDOW(1), PSTH_WINDOW(2), ...
+                SLIDING_BIN_WIDTH, SLIDING_STEP_SIZE);
+
+            imagesc(ax_raster, bin_centers_raster, 1:size(psth_raster, 1), psth_raster);
+            colormap(ax_raster, flipud(bone(64)));
+            set(ax_raster, 'YDir', 'normal');
+            title(ax_raster, plot_title);
+            set(ax_raster, 'xticklabel', {[]});
+        else
+            text(0.5, 0.5, 'No data for raster', 'Parent', ax_raster, 'HorizontalAlignment', 'center');
+        end
+
+        % Finalize PSTH plot appearance
+        xlabel(ax_psth, sprintf('Time from %s (s)', plot_title));
+        if i_plot == 1
+            ylabel(ax_psth, 'Firing Rate (Hz)');
+        else
+            set(ax_psth, 'yticklabel', {[]});
+        end
+        xline(ax_psth, 0, 'r--');
+
+        % Link axes and set limits
+        linkaxes([ax_raster, ax_psth], 'x');
+        xlim(ax_raster, PSTH_WINDOW);
     end
 
     %% --- Summary Information ---
@@ -348,72 +278,5 @@ for i_cluster = 1:nClusters
 end
 
 fprintf('Diagnostic PDF saved to %s\n', output_filename);
-
-end
-
-%% Local Helper Functions
-
-function plot_psth_and_raster(ax_raster, ax_psth, spike_times, ...
-    event_times, psth_win, title_text, xlabel_text, show_y_label, ...
-    bin_width, step_size)
-% PLOT_PSTH_AND_RASTER Plots a raster and its corresponding PSTH using
-% a sliding window.
-%
-%   Inputs:
-%       ax_raster      - Axes handle for the raster plot.
-%       ax_psth        - Axes handle for the PSTH plot.
-%       spike_times    - Vector of spike timestamps.
-%       event_times    - Vector of event timestamps to align to.
-%       psth_win       - 2-element vector for the time window.
-%       title_text     - String for the title of the raster plot.
-%       xlabel_text    - String for the xlabel of the PSTH plot.
-%       show_y_label   - Boolean to control y-label visibility.
-%       bin_width      - Width of the sliding window bins (seconds).
-%       step_size      - Step size for the sliding window (seconds).
-
-% Calculate PSTH using sliding window.
-[psth, bin_centers, ~] = alignAndBinSpikes(spike_times, ...
-    event_times, psth_win(1), psth_win(2), bin_width, step_size);
-
-% get rid of rows composed exclusively of 0 or NaN:
-nPsthRows = size(psth, 1);
-badRows = false(nPsthRows, 1);
-for i = 1:nPsthRows
-    badRows(i) = all((psth(i,:)) == 0 | isnan(psth(i,:)));
-end
-psth(badRows, :) = [];
-
-% compute mean rate
-n_trials = size(psth, 1);
-psth_rate = sum(psth, 1, 'omitnan') / (n_trials * bin_width);
-
-% Plot Raster
-imagesc(ax_raster, bin_centers, 1:n_trials, psth);
-colormap(ax_raster, flipud(bone(64)));
-set(ax_raster, 'YDir', 'normal');
-title(ax_raster, title_text);
-set(ax_raster, 'xticklabel', {[]}); % No x-labels on raster
-
-% Plot PSTH
-if ~isempty(psth_rate)
-    axes(ax_psth); % Select the correct axes
-    hBS = barStairsFill(bin_centers, psth_rate, zeros(size(psth_rate)));
-    delete(hBS(2:3))
-    hBS(1).FaceColor = 'k';
-    xline(ax_psth, 0, 'r--');
-    xlabel(ax_psth, xlabel_text);
-    if show_y_label
-        ylabel(ax_psth, 'Firing Rate (Hz)');
-    else
-        set(ax_psth, 'yticklabel', {[]});
-    end
-else
-    text(0.5, 0.5, 'No data', 'Parent', ax_psth, ...
-        'HorizontalAlignment', 'center');
-end
-
-% Link axes and set limits
-linkaxes([ax_raster, ax_psth], 'x');
-set(ax_raster, 'XLim', psth_win, 'YLim', [0 n_trials + 1]);
 
 end
