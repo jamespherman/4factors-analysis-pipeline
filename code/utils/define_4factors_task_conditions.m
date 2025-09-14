@@ -1,4 +1,4 @@
-function output = define_task_conditions(varargin)
+function output = define_4factors_task_conditions(varargin)
 % DEFINE_TASK_CONDITIONS is a dual-purpose function for the 4factors task.
 %
 % This function serves two roles:
@@ -92,7 +92,10 @@ else
 
     % --- Initial Trial Filtering (The Master Mask) ---
     % Identify trials belonging to the gSac_4factors task
-    isGSac4factors = strcmp(trialInfo.task, 'gSac_4factors');
+    isGSac4factors = trialInfo.taskCode == ...
+        codes.uniqueTaskCode_gSac_4factors & ...
+        ~isempty(trialInfo.pdsReward);
+
 
     % Identify successfully completed trials (outcome == 1 is success)
     isSuccessful = trialInfo.outcome == 1;
