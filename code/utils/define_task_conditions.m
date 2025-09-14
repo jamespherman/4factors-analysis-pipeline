@@ -1,5 +1,5 @@
-function [conditions, condition_defs] = define_4factors_task_conditions(varargin)
-% DEFINE_4FACTORS_TASK_CONDITIONS Creates trial condition masks and defines analysis plans
+function [conditions, condition_defs] = define_task_conditions(varargin)
+% DEFINE_TASK_CONDITIONS Creates trial condition masks and defines analysis plans
 %
 % This function serves a dual purpose for the 4factors task:
 % 1.  When called without arguments, it returns a comprehensive analysis
