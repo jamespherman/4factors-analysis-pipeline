@@ -10,31 +10,45 @@ This pipeline processes standardized session\_data.mat files, which are the outp
 
 The project is organized into the following directories:
 
-* **/code/**: Contains all MATLAB source code for the analysis.  
-  * \+data\_handling/: Package for functions related to loading and preparing data.
-  * \+analysis/: Package containing modules for core analysis tasks like neuron screening.
-  * \+utils/: Directory for general-purpose helper functions (e.g., arrayROC.m, barStairsFill.m).
-  * \+examples/: Contains scripts that demonstrate how to use the core functions to perform analyses.
-* **/config/**: Contains configuration files.  
-  * session\_manifest.csv: The central control file for the pipeline. It lists all available recording sessions and their metadata.
-* **/docs/**: Contains project documentation.
-* **/output/**: The destination for all generated files (figures, analysis results, reports). This directory is ignored by Git.
+*   **/code/**: Contains all MATLAB source code for the analysis.
+    *   **/utils/**: Contains general-purpose helper functions (e.g., `arrayROC.m`, `barStairsFill.m`).
+    *   **/examples/**: Contains scripts that demonstrate how to use individual functions.
+    *   All other analysis scripts are located in the root of the `/code/` directory.
+*   **/config/**: Contains configuration files.
+    *   `session_manifest.csv`: The central control file for the pipeline. It lists all available recording sessions and their metadata, and tracks the analysis progress.
+*   **/docs/**: Contains project documentation, including data dictionaries.
+*   **/figures/**: The destination for generated figures, such as per-neuron diagnostic plots. This directory is created automatically.
+*   **/output/**: The destination for all generated files (figures, analysis results, reports). This directory is ignored by Git.
 
-## **3\. Core Dependencies**
+## **3. Core Dependencies**
 
-* **MATLAB (R2021b or newer recommended)**  
-* **Required Toolboxes:**  
-  * Statistics and Machine Learning Toolbox
+*   **MATLAB (R2021b or newer recommended)**
+*   **Required Toolboxes:**
+    *   Statistics and Machine Learning Toolbox
 
-## **4\. Workflow Overview**
+## **4. Workflow Overview**
 
-This repository does not currently have a single master script to run all analyses. Instead, the analysis is performed by running scripts from the **/code/examples/** directory. These scripts demonstrate the intended workflow:
+The main entry point for the analysis is the `run_4factors_analysis.m` script located in the `/code/` directory. This script automates the entire pipeline, from data loading to analysis and saving results.
 
-1. **Load Data**: Use `data_handling.load_session` to load a specific session's data by referencing its `unique_id` from `config/session_manifest.csv`.
-2. **Select Neurons**: Use `analysis.select_neurons` to identify task-modulated neurons based on the recorded brain area (SC or SNc). This function calls area-specific screening functions (`screen_sc_neurons` or `screen_da_neurons`).
-3. **Perform Analysis**: Use the various functions and example scripts to perform specific analyses, such as calculating firing rates, plotting PSTHs, or computing ROC curves.
+The workflow is as follows:
 
-Please see the scripts in the `/code/examples/` directory for concrete examples of how to use the functions in this pipeline.
+1.  **Configuration**: The script is driven by the `config/session_manifest.csv` file. This file lists all sessions to be processed and tracks the status of each analysis stage (`screening`, `dataprep`, `analysis`).
+2.  **Execution**: Run the `run_4factors_analysis.m` script from the MATLAB command line. The script will:
+    a.  Load the session manifest.
+    b.  Load an `analysis_plan` from `define_task_conditions.m`.
+    c.  Iterate through each session in the manifest.
+    d.  For each session, it performs the following steps, skipping any that are already marked as 'complete' in the manifest:
+        i.  **Load Data**: Loads the `_session_data.mat` file.
+        ii. **Neuron Screening**: Selects task-modulated neurons by calling `screen_sc_neurons.m` or `screen_da_neurons.m`.
+        iii. **Diagnostic PDF Generation**: Creates per-neuron summary plots using `generate_neuron_summary_pdf.m`.
+        iv. **Core Data Preparation**: Prepares the data for analysis by calling `prepare_core_data.m`.
+        v.  **Run Analyses**: Executes a series of analyses as defined in the `analysis_plan`, including:
+            *   `analyze_baseline_comparison.m`
+            *   `analyze_roc_comparison.m`
+            *   `analyze_anova.m`
+    e.  Saves the updated `session_data` structure and the modified manifest.
+
+You can use the `force_rerun` structure at the top of `run_4factors_analysis.m` to force specific stages of the pipeline to re-run, even if they are marked as complete.
 
 ## **5\. Data and Path Conventions**
 
@@ -45,27 +59,30 @@ This project uses a standardized two-directory system to separate code from data
 
 All scripts in this project are designed to be run from the root of the Project Directory. The code includes a helper function (`utils.findOneDrive`) to automatically locate the Data Directory on your system, ensuring that the analysis pipeline can find the necessary data files without manual path configuration.
 
-## **6\. Function Reference**
+## **6. Key Function Reference**
 
-This section provides a brief overview of the key functions in the analysis pipeline.
+This section provides a brief overview of the key functions in the analysis pipeline. All functions are located in the `/code/` directory unless otherwise specified.
 
-### **`+data_handling`**
+### **Main Script**
 
-*   **`load_session.m`**: Loads a session's `_session_data.mat` file and merges it with the corresponding metadata from `session_manifest.csv`.
+*   **`run_4factors_analysis.m`**: The main script that orchestrates the entire analysis pipeline.
 
-### **`+analysis`**
+### **Core Analysis Functions**
 
-*   **`select_neurons.m`**: A top-level function that selects neurons for analysis based on the brain area recorded. It calls one of the area-specific screening functions below.
-*   **`screen_sc_neurons.m`**: Implements an inclusive, multi-group method to identify task-modulated Superior Colliculus (SC) neurons. It identifies neurons that show significant firing rate changes during different task epochs (e.g., visual, delay, saccade) across various trial conditions.
-*   **`screen_da_neurons.m`**: Selects putative dopamine (DA) neurons in the Substantia Nigra pars compacta (SNc) based on electrophysiological criteria, specifically a low baseline firing rate (< 20 sp/s) and a broad waveform.
-*   **`get_spike_times.m`**: Extracts and returns a cell array of spike timestamps for a given list of neuron IDs.
-*   **`define_task_conditions.m`**: Defines logical masks to identify trials belonging to specific experimental conditions (e.g., based on target location, reward value).
-*   **`determine_rf_location.m`**: Determines the receptive field (RF) location for neurons, typically by comparing activity for contralateral vs. ipsilateral targets.
+*   **`define_task_conditions.m`** (`/code/utils/`): Defines the `analysis_plan` that governs which analyses are run. It also generates logical masks to identify trials belonging to specific experimental conditions.
+*   **`screen_sc_neurons.m`**: Identifies task-modulated Superior Colliculus (SC) neurons.
+*   **`screen_da_neurons.m`**: Selects putative dopamine (DA) neurons based on electrophysiological criteria.
+*   **`prepare_core_data.m`**: Aligns and bins spike data to create the `core_data` structure used by all subsequent analyses.
+*   **`analyze_baseline_comparison.m`**: Compares post-event firing rates to a pre-event baseline.
+*   **`analyze_roc_comparison.m`**: Performs ROC analysis to compare firing rates between two conditions over time.
+*   **`analyze_anova.m`**: Performs N-way ANOVA on the data.
+*   **`determine_rf_location.m`**: Determines the receptive field (RF) location for neurons.
+*   **`generate_neuron_summary_pdf.m`**: Generates a multi-page PDF with diagnostic plots for each selected neuron.
 
-### **`+utils` (Key Functions)**
+### **Utility Functions (`/code/utils/`)**
 
-*   **`alignAndBinSpikes.m`**: A core utility for creating spike count matrices. It takes spike times, alignment event times, and a time window, and returns a binned matrix of spike counts, which is fundamental for many analyses.
-*   **`arrayROC.m`**: Calculates the Receiver Operating Characteristic (ROC) curve and the Area Under the Curve (AUC) for time-resolved data, allowing for analysis of how well a neuron's firing rate discriminates between two conditions over time.
+*   **`alignAndBinSpikes.m`**: A core utility for creating binned spike count matrices.
+*   **`arrayROC.m`**: Calculates the Receiver Operating Characteristic (ROC) and Area Under the Curve (AUC) for time-resolved data.
 *   **`calculate_baseline_fr.m`**: Computes the baseline firing rate for each neuron.
-*   **`calculate_waveform_metrics.m`**: Calculates metrics from a neuron's average waveform shape, such as peak-to-trough duration.
-*   **`findOneDrive.m`**: A helper function that automatically finds the path to the user's OneDrive directory, allowing for seamless access to the data directory.
+*   **`findOneDrive.m`**: A helper function that automatically finds the path to the user's OneDrive directory.
+*   **`initCodes.m`**: Initializes a structure with task-related codes.
