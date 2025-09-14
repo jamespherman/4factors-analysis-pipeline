@@ -78,6 +78,12 @@ if nargin == 0
 
     analysisPlan.diagnostic_plots = diag_plots;
 
+    % --- N-way ANOVA Plan ---
+    analysisPlan.anova_plan.run = true;
+    analysisPlan.anova_plan.event = 'targetOn';
+    analysisPlan.anova_plan.factors = {'reward', 'salience', 'identity', 'probability'};
+    analysisPlan.anova_plan.trial_mask = 'is_in_rf';
+
     output = analysisPlan;
 else
     % --- Calculate and return session-specific condition masks ---

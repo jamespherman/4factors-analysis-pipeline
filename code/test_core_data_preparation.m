@@ -163,7 +163,7 @@ end
 %% Define Task Conditions
 % Create logical masks for different trial conditions
 giveFeed('Step 5: Defining task conditions...');
-[conditions, is_av_session] = define_task_conditions(session_data.trialInfo, ...
+[conditions, is_av_session] = define_tokens_task_conditions(session_data.trialInfo, ...
     session_data.eventTimes, session_data.metadata.unique_id);
 
 %% PLOTTING CONFIGURATION
