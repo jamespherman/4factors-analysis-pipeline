@@ -65,6 +65,19 @@ if nargin == 0
 
     analysisPlan.roc_comparison.comparisons_to_run = comparisons;
 
+    % --- Per-Neuron Diagnostic Plots ---
+    % Defines the set of plots to be generated for each neuron in the
+    % summary PDF. Each entry in the struct array defines one panel.
+    diag_plots(1).event = 'targetOn';
+    diag_plots(1).title = 'Target On';
+    diag_plots(1).conditions_to_compare = {'is_in_rf', 'is_out_of_rf'};
+
+    diag_plots(2).event = 'saccadeOnset';
+    diag_plots(2).title = 'Saccade Onset';
+    diag_plots(2).conditions_to_compare = {'is_in_rf', 'is_out_of_rf'};
+
+    analysisPlan.diagnostic_plots = diag_plots;
+
     output = analysisPlan;
 else
     % --- Calculate and return session-specific condition masks ---
