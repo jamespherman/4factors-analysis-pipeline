@@ -13,10 +13,11 @@
 The canonical definition for the main `session_data` structure is located in:
 `docs/preprocessing_docs/session_data_dictionary.md`
 
-For analyses driven by the `define_task_conditions.m` function, you must also consult the `analysis_plan` definition in:
-`docs/analysis_data_dictionary.md`
+For analyses driven by the `define_4factors_task_conditions.m` function, you must adhere to the following hierarchy of truth:
+1.  The `condition_defs` structure produced by `define_4factors_task_conditions.m` is the absolute source of truth for the analysis plan.
+2.  The `analysis_plan` definition in `docs/analysis_data_dictionary.md` serves as documentation for this structure.
 
-Do not make assumptions about the fields or layout of this structure. The documentation is the single source of truth. For example:
+If you find any discrepancy between the `condition_defs` output and the data dictionary, the **code takes precedence**. Do not make assumptions about the fields or layout of this structure based on the documentation alone. Always verify against the function's output. For example:
 - The number of clusters/neurons should be derived from `session_data.spikes.cluster_info`, not a field like `nClusters`.
 - Trial-related event times are in the `session_data.eventTimes` struct, not a `trials` struct.
 - Spike times are stored as a single vector (`spikes.times`) and mapped to clusters via `spikes.clusters`, not as a cell array per neuron.
@@ -106,7 +107,7 @@ valid_cue_on_times = session_data.eventTimes.CUE_ON(fourfactors_trial_indices);
 #### **2. Condition Mask Compatibility**
 When creating logical masks for different experimental conditions, ensure they are compatible with the data they are intended to select. This means the masks should have the same number of elements as the trials for the specific task being analyzed.
 
-For example, the `define_task_conditions.m` function is designed to generate condition masks specifically for '4factors' trials. It first filters the session data to include only rewarded 4factors trials and then creates masks that are the same length as this filtered set of trials. This ensures that the masks can be directly applied to `core_data` arrays, which are also filtered for 4factors trials.
+For example, the `define_4factors_task_conditions.m` function is designed to generate condition masks specifically for '4factors' trials. It first filters the session data to include only rewarded 4factors trials and then creates masks that are the same length as this filtered set of trials. This ensures that the masks can be directly applied to `core_data` arrays, which are also filtered for 4factors trials.
 
 ### **Interpreting Specific Task Data**
 The `gSac_jph` task has special properties that can be leveraged during analysis. Memory-guided saccade trials within this task are intentionally placed at the neuron's estimated receptive/movement field center. This experimental design allows for two major simplifications:

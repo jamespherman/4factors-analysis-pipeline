@@ -104,8 +104,8 @@ for i = 1:height(manifest)
     end
 
     % Count planned analyses
-    for j = 1:length(analysis_plan.baseline_comparison.conditions_to_run)
-        comp_name = analysis_plan.baseline_comparison.conditions_to_run{j};
+    for j = 1:length(analysis_plan.baseline_plan)
+        comp_name = analysis_plan.baseline_plan(j).name;
         path_to_check = fullfile('analysis', 'baseline_comparison', 'targetOn', comp_name);
         S = substruct('.', strsplit(path_to_check, '/'));
         try
@@ -114,8 +114,8 @@ for i = 1:height(manifest)
             n_total_steps = n_total_steps + 1;
         end
     end
-    for j = 1:length(analysis_plan.roc_comparison.comparisons_to_run)
-        comp = analysis_plan.roc_comparison.comparisons_to_run(j);
+    for j = 1:length(analysis_plan.roc_plan)
+        comp = analysis_plan.roc_plan(j);
         path_to_check = fullfile('analysis', 'roc_comparison', comp.event, comp.name);
         S = substruct('.', strsplit(path_to_check, '/'));
         try
@@ -236,8 +236,8 @@ for i = 1:height(manifest)
     giveFeed('Checking for missing analyses...');
 
     % A. Baseline Comparison Analyses
-    for j = 1:length(analysis_plan.baseline_comparison.conditions_to_run)
-        comp_name = analysis_plan.baseline_comparison.conditions_to_run{j};
+    for j = 1:length(analysis_plan.baseline_plan)
+        comp_name = analysis_plan.baseline_plan(j).name;
 
         % Check for existence of the new, nested structure. We check for
         % the first event ('targetOn') as a proxy for the whole analysis.
@@ -276,8 +276,8 @@ for i = 1:height(manifest)
     end
 
     % B. ROC Comparison Analyses
-    for j = 1:length(analysis_plan.roc_comparison.comparisons_to_run)
-        comp = analysis_plan.roc_comparison.comparisons_to_run(j);
+    for j = 1:length(analysis_plan.roc_plan)
+        comp = analysis_plan.roc_plan(j);
 
         % Check for the existence of the new, nested structure.
         run_this_analysis = force_rerun.analyses;
@@ -335,8 +335,8 @@ for i = 1:height(manifest)
     % --- Verify Analysis Completion & Update Manifest ---
     is_analysis_complete = true;
     % Check baseline comparisons
-    for j = 1:length(analysis_plan.baseline_comparison.conditions_to_run)
-        comp_name = analysis_plan.baseline_comparison.conditions_to_run{j};
+    for j = 1:length(analysis_plan.baseline_plan)
+        comp_name = analysis_plan.baseline_plan(j).name;
         % Check for the first event as a proxy
         path_to_check = fullfile('analysis', 'baseline_comparison', 'targetOn', comp_name);
         S = substruct('.', strsplit(path_to_check, '/'));
@@ -348,8 +348,8 @@ for i = 1:height(manifest)
     end
     % Check ROC comparisons
     if is_analysis_complete
-        for j = 1:length(analysis_plan.roc_comparison.comparisons_to_run)
-            comp = analysis_plan.roc_comparison.comparisons_to_run(j);
+        for j = 1:length(analysis_plan.roc_plan)
+            comp = analysis_plan.roc_plan(j);
             path_to_check = fullfile('analysis', 'roc_comparison', comp.event, comp.name);
             S = substruct('.', strsplit(path_to_check, '/'));
             try
