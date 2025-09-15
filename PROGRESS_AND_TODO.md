@@ -60,3 +60,47 @@ This document tracks the development of the analysis pipeline. It has been updat
     *   The current structure has many scripts in the root `/code/` directory. Consider refactoring into a more modular package structure (e.g., `+analysis`, `+plotting`) to improve organization and maintainability, as was originally envisioned.
 *   [ ] **Task 4.5: Update Function-Level Documentation**
     *   Ensure all functions have complete and accurate header comments explaining their purpose, inputs, outputs, and any important assumptions.
+
+### **run_4factors_analysis.m Audit**
+
+*This section documents findings from a code audit performed on `run_4factors_analysis.m`. The goal was to identify bugs, inconsistencies, and logical errors without implementing fixes.*
+
+1.  **Inconsistent Project Root Path:**
+    *   **File:** `code/run_4factors_analysis.m`
+    *   **Line:** 28
+    *   **Issue:** The script defines `project_root` using `fileparts`, which contradicts the `findOneDrive`-based method mandated in `code/AGENTS.md`. This could lead to pathing errors if the execution environment changes.
+
+2.  **Improper MATLAB Path Addition:**
+    *   **File:** `code/run_4factors_analysis.m`
+    *   **Line:** 29
+    *   **Issue:** The script adds the entire project root directory to the MATLAB path. This is poor practice as it can lead to function shadowing and conflicts with built-in MATLAB functions.
+
+3.  **Access to Non-Existent Field:**
+    *   **File:** `code/run_4factors_analysis.m`
+    *   **Line:** 88
+    *   **Issue:** The script checks for `session_data.metrics`, a field that is not defined in the `docs/preprocessing_docs/session_data_dictionary.md`. This may be a remnant of an older data structure and will always be false.
+
+4.  **Hardcoded Event Name in Idempotency Check:**
+    *   **File:** `code/run_4factors_analysis.m`
+    *   **Lines:** 400, 513
+    *   **Issue:** The idempotency check for the "Baseline Comparison" analysis and the final manifest verification hardcode the event name `'targetOn'`. This makes the logic brittle and will cause unnecessary re-computation or failed completion marking if a session's analysis plan does not involve that specific event.
+
+5.  **Flawed "Dry Run" and Execution Logic:**
+    *   **File:** `code/run_4factors_analysis.m`
+    *   **Lines:** 145-285
+    *   **Issue:** The population decoding execution block (lines 145-258) is incorrectly placed within the "dry run" section that calculates the total number of steps. This means progress reporting (`Step X of Y`) will be inaccurate, as the total `Y` is not finalized before the steps begin.
+
+6.  **Uninitialized Variable Error:**
+    *   **File:** `code/run_4factors_analysis.m`
+    *   **Lines:** 203, 238, 286
+    *   **Issue:** The variable `step_counter` is used inside the misplaced population decoding block (e.g., lines 203, 238) *before* it is initialized on line 286. This will cause a fatal script error.
+
+7.  **Inconsistent Idempotency Check Implementation:**
+    *   **File:** `code/run_4factors_analysis.m`
+    *   **Lines:** 396-484
+    *   **Issue:** The logic for skipping completed analyses is inconsistent. "Baseline Comparison" uses a hardcoded event, "ROC Comparison" correctly uses the event from the analysis plan, and "ANOVA" uses a simple `isfield` check. This inconsistency makes the script harder to maintain and debug.
+
+8.  **Flawed Population Decoding Idempotency:**
+    *   **File:** `code/run_4factors_analysis.m`
+    *   **Lines:** 195-224
+    *   **Issue:** The check to skip model training is insufficient. It reruns training if a previous attempt completed training but failed during the subsequent testing phase, which is inefficient. The logic does not properly distinguish between a run that has not started and one that is partially complete.
