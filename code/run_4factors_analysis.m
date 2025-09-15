@@ -145,6 +145,107 @@ for i = 1:height(manifest)
             end
         end
     end
+
+    % E. Population Decoding Analyses
+    if isfield(analysis_plan, 'decoding_plan')
+
+        % --- Stage 1: Train Models ---
+        % Idempotency Check: run if results field doesn't exist or rerun is forced
+        run_training = false;
+        if ~isfield(session_data, 'analysis') || ...
+           ~isfield(session_data.analysis, 'population_decoding')
+            run_training = true;
+        end
+        if force_rerun.analyses
+            run_training = true;
+        end
+
+        trained_models = {};
+        if run_training
+            step_counter = step_counter + 1;
+            fprintf(['\n--- Session %s: Step %d/%d: Population ' ...
+                'Decoding: Model Training ---\n'], unique_id, ...
+                step_counter, n_total_steps);
+            giveFeed('--> Training all decoding models...');
+
+            training_plan = analysis_plan.decoding_plan.training_plan;
+            for j = 1:length(training_plan)
+                modelInfo = train_decoder(session_data, conditions, ...
+                    core_data, training_plan(j));
+                trained_models{end+1} = modelInfo;
+            end
+
+            % Store models temporarily; they won't be saved in session_data
+            session_data.analysis.population_decoding.trained_models = trained_models;
+            data_updated = true;
+            giveFeed('--> Model training complete.');
+        else
+            giveFeed('--> Model training already complete, loading models.');
+            trained_models = session_data.analysis.population_decoding.trained_models;
+        end
+
+        % --- Stage 2: Test Models ---
+        testing_plan = analysis_plan.decoding_plan.testing_plan;
+        is_any_test_missing = false;
+        for j = 1:length(testing_plan)
+            test_name = testing_plan(j).test_name;
+            if ~isfield(session_data.analysis.population_decoding, test_name)
+                is_any_test_missing = true;
+                break;
+            end
+        end
+
+        if is_any_test_missing || force_rerun.analyses
+            step_counter = step_counter + 1;
+            fprintf(['\n--- Session %s: Step %d/%d: Population ' ...
+                'Decoding: Model Testing ---\n'], unique_id, ...
+                step_counter, n_total_steps);
+            giveFeed('--> Running decoding model tests...');
+
+            for j = 1:length(testing_plan)
+                testing_item = testing_plan(j);
+                % Only run if result is missing or rerun is forced
+                if ~isfield(session_data.analysis.population_decoding, testing_item.test_name) || force_rerun.analyses
+                    results = test_decoder(trained_models, conditions, core_data, testing_item);
+                    session_data.analysis.population_decoding.(testing_item.test_name) = results;
+                    data_updated = true;
+                end
+            end
+            giveFeed('--> Model testing complete.');
+        else
+            giveFeed('--> All decoding tests already complete.');
+        end
+
+        % Clean up temporary trained models field
+        if isfield(session_data.analysis.population_decoding, 'trained_models')
+            session_data.analysis.population_decoding = ...
+                rmfield(session_data.analysis.population_decoding, 'trained_models');
+        end
+    end
+
+    % Count population decoding analyses
+    if isfield(analysis_plan, 'decoding_plan') && ...
+            isfield(analysis_plan.decoding_plan, 'testing_plan')
+        % One step for all training, one for all testing
+        if ~isfield(session_data, 'analysis') || ...
+           ~isfield(session_data.analysis, 'population_decoding') || ...
+           force_rerun.analyses
+            n_total_steps = n_total_steps + 2;
+        else
+            % Check if any test result is missing
+            is_testing_incomplete = false;
+            for j = 1:length(analysis_plan.decoding_plan.testing_plan)
+                test_name = analysis_plan.decoding_plan.testing_plan(j).test_name;
+                if ~isfield(session_data.analysis.population_decoding, test_name)
+                    is_testing_incomplete = true;
+                    break;
+                end
+            end
+            if is_testing_incomplete
+                 n_total_steps = n_total_steps + 1;
+            end
+        end
+    end
     step_counter = 0;
 
     % --- Pipeline Stages ---
@@ -419,6 +520,20 @@ for i = 1:height(manifest)
         for j = 1:length(analysis_plan.behavior_plan)
             analysis_name = analysis_plan.behavior_plan(j).name;
             path_to_check = fullfile('analysis', 'behavioral_results', analysis_name);
+            S = substruct('.', strsplit(path_to_check, '/'));
+            try
+                subsref(session_data, S);
+            catch
+                is_analysis_complete = false; break;
+            end
+        end
+    end
+
+    % Check population decoding results
+    if is_analysis_complete && isfield(analysis_plan, 'decoding_plan')
+        for j = 1:length(analysis_plan.decoding_plan.testing_plan)
+            test_name = analysis_plan.decoding_plan.testing_plan(j).test_name;
+            path_to_check = fullfile('analysis', 'population_decoding', test_name);
             S = substruct('.', strsplit(path_to_check, '/'));
             try
                 subsref(session_data, S);

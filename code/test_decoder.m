@@ -1,38 +1,28 @@
 %% test_decoder.m
 %
-% Tests a pre-trained SVM classifier on a specified test dataset.
+% Tests a pre-trained SVM classifier based on a specified test plan.
 %
-% This function takes a collection of trained models and a testing plan
-% item. It finds the correct model using the 'train_model_tag' from the
-% testing plan, prepares the test data (features and labels), and then
-% uses the model to predict labels for the test set. Finally, it
-% calculates and returns the classification accuracy.
+% This function orchestrates different types of decoding tests based on the
+% `testing_plan_item.type`. It supports cross-factor and cross-time
+% generalization, as well as standard cross-validated accuracy estimation.
 %
 % ---
 %
 % Inputs:
 %
-%   trained_models: A cell array of modelInfo structs, where each struct
-%                   is the output of train_decoder.m.
+%   trained_models: A cell array of modelInfo structs from train_decoder.m.
 %
 %   conditions: A struct with logical masks for experimental conditions.
 %
 %   core_data: A struct with processed neural data (e.g., firing rates).
 %
-%   testing_plan_item: A single struct from the analysis plan, defining
-%                      the testing procedure. It must contain:
-%                      - .train_model_tag: Identifier for the model to use.
-%                      - .align_event: Event to align data to.
-%                      - .time_window: [1x2] time window for features.
-%                      - .cond1, .cond2: Conditions to decode.
-%                      - .trial_mask: Mask for selecting trials.
+%   testing_plan_item: A struct from the analysis plan defining the test.
 %
 % ---
 %
 % Output:
 %
-%   results: A struct containing the analysis results, including:
-%            - .accuracy: The classification accuracy on the test set.
+%   results: A struct with .accuracy and .accuracy_ci fields.
 %
 % ---
 %
@@ -43,12 +33,10 @@ function results = test_decoder(trained_models, conditions, ...
     core_data, testing_plan_item)
 
 %% Setup Paths
-% Add the 'utils' directory to the path for helper functions.
 [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
 addpath(fullfile(script_dir, 'utils'));
 
 %% Find Pre-Trained Model
-% Find the correct model from the collection using the train_model_tag.
 train_tag = testing_plan_item.train_model_tag;
 model_found = false;
 for i = 1:length(trained_models)
@@ -59,47 +47,75 @@ for i = 1:length(trained_models)
     end
 end
 
-% Throw an error if the specified model was not found.
 if ~model_found
     error('test_decoder:ModelNotFound', ...
-        'Model with tag "%s" not found in trained_models.', train_tag);
+        'Model with tag "%s" not found.', train_tag);
 end
 
-%% Data Preparation
-% Extract feature matrix (X_test) and label vector (Y_test).
+%% Main Logic: Switch on Test Type
+switch testing_plan_item.type
+    case {'cross_factor', 'cross_time'}
+        %% Data Preparation for Generalization Tests
+        if strcmp(testing_plan_item.type, 'cross_time')
+            align_event = testing_plan_item.test_align_event;
+            time_window = testing_plan_item.test_time_window;
+        else
+            align_event = testing_plan_item.align_event;
+            time_window = testing_plan_item.time_window;
+        end
 
-% Select the binned firing rates for the correct alignment event
-align_event = testing_plan_item.align_event;
-binned_rates = core_data.(align_event).rates;
-time_vector = core_data.(align_event).time_vector;
+        binned_rates = core_data.(align_event).rates;
+        time_vector = core_data.(align_event).time_vector;
 
-% Identify time bins within the specified time_window
-time_window = testing_plan_item.time_window;
-time_bin_indices = time_vector >= time_window(1) & ...
-                   time_vector <= time_window(2);
+        time_bin_indices = time_vector >= time_window(1) & ...
+                           time_vector <= time_window(2);
+        X = squeeze(mean(binned_rates(:, :, time_bin_indices), 3));
 
-% Average firing rates across time bins for the feature matrix
-X = squeeze(mean(binned_rates(:, :, time_bin_indices), 3));
+        cond1_mask = conditions.(testing_plan_item.test_cond1);
+        cond2_mask = conditions.(testing_plan_item.test_cond2);
 
-% Get logical masks for the two conditions and the trial mask
-cond1_mask = conditions.(testing_plan_item.cond1);
-cond2_mask = conditions.(testing_plan_item.cond2);
-trial_mask = conditions.(testing_plan_item.trial_mask);
+        mask_field = testing_plan_item.trial_mask;
+        if iscell(mask_field)
+            trial_mask = true(size(cond1_mask));
+            for i = 1:length(mask_field)
+                trial_mask = trial_mask & conditions.(mask_field{i});
+            end
+        else
+            trial_mask = conditions.(mask_field);
+        end
 
-% Combine masks to select the final trials for testing
-testing_mask = (cond1_mask | cond2_mask) & trial_mask;
+        testing_mask = (cond1_mask | cond2_mask) & trial_mask;
+        X_test = X(testing_mask, :);
+        Y_test = cond1_mask(testing_mask);
 
-% Select the feature matrix and create the label vector
-X_test = X(testing_mask, :);
-Y_test = cond1_mask(testing_mask);
+        %% Test Model and Calculate Accuracy
+        Y_pred = predict(modelInfo.model, X_test);
+        n_correct = sum(Y_pred == Y_test);
+        n_total = length(Y_test);
+        [accuracy, accuracy_ci] = binofit(n_correct, n_total);
 
-%% Test Model
-% Use the pre-trained model to predict labels and calculate accuracy.
-Y_pred = predict(modelInfo.model, X_test);
-accuracy = mean(Y_pred == Y_test);
+    case 'standard'
+        %% Standard K-Fold Cross-Validation
+        % Retrieve the original training data stored in the model object
+        X_train = modelInfo.model.X;
+        Y_train = modelInfo.model.Y;
+
+        % Perform 10-fold cross-validation
+        cv_model = crossval(modelInfo.model, 'KFold', 10);
+        Y_pred = kfoldPredict(cv_model);
+
+        % Calculate accuracy and confidence interval
+        n_correct = sum(Y_pred == Y_train);
+        n_total = length(Y_train);
+        [accuracy, accuracy_ci] = binofit(n_correct, n_total);
+
+    otherwise
+        error('test_decoder:UnknownTestType', ...
+            'Unknown test type: %s', testing_plan_item.type);
+end
 
 %% Package Output
-% Store the accuracy in the results struct.
 results.accuracy = accuracy;
+results.accuracy_ci = accuracy_ci;
 
 end
