@@ -21,9 +21,6 @@ function [conditions, condition_defs] = define_task_conditions(varargin)
 %                   for what analyses to run, what conditions to compare,
 %                   and how to configure them. It is used by the main
 %                   analysis pipeline to orchestrate the entire analysis.
-%                   The `.decoding_plan` field is further divided into a
-%                   `.training_plan` for defining classifiers and a
-%                   `.testing_plan` for defining generalization tests.
 
 %% --- I. Define the Comprehensive Analysis Plan ---
 % This section defines the entire analysis plan. It is used by the main
@@ -108,64 +105,42 @@ condition_defs.behavior_plan(3).factors = {'reward', 'salience', 'identity', 'pr
 condition_defs.behavior_plan(3).trial_mask = 'is_in_rf';
 
 % H. Population Decoding Plan
-% This plan is now a two-stage process. First, a set of classifiers are
-% trained based on the 'training_plan'. Second, these trained models are
-% tested on new data according to the 'testing_plan'.
-
-% H1. Training Plan
-% Defines all classifiers to be trained.
-training_plan = struct('model_tag', {}, 'align_event', {}, ...
-                       'time_window', {}, 'cond1', {}, 'cond2', {}, ...
-                       'trial_mask', {});
+% Each entry defines a decoding analysis.
+% 'type' can be 'standard', 'cross_factor', or 'cross_time'.
+decoding_plan = struct('name', {}, 'type', {}, 'label', {}, 'epoch', {}, ...
+                       'cond1', {}, 'cond2', {}, 'trial_mask', {});
 
 factors = {'reward', 'salience', 'identity', 'probability', 'rf_location'};
-epoch_defs = struct(...
-    'Visual', struct('event', 'targetOn', 'window', [0.05, 0.25]), ...
-    'Delay',  struct('event', 'fixOff', 'window', [-0.15, 0.05]), ...
-    'Saccade',struct('event', 'saccadeOnset', 'window', [-0.20, 0.00]) ...
-);
-epoch_names = fieldnames(epoch_defs);
+epochs = {'visual', 'delay', 'saccade'};
+align_map = struct('visual', 'targetOn', 'delay', 'fixOff', 'saccade', 'saccadeOnset');
 
 for i = 1:length(factors)
-    factor_name = factors{i};
-    conds = condition_defs.condition_masks.(factor_name);
-    for j = 1:length(epoch_names)
-        epoch_name = epoch_names{j};
-        epoch_details = epoch_defs.(epoch_name);
+    factor = factors{i};
+    conds = condition_defs.condition_masks.(factor);
+    for j = 1:length(epochs)
+        epoch_name = epochs{j};
 
         entry = struct();
-        % Capitalize first letter for tag
-        tag_factor_name = [upper(factor_name(1)), factor_name(2:end)];
-        if strcmp(factor_name, 'rf_location')
-            tag_factor_name = 'RF_Location';
-        end
-        entry.model_tag = sprintf('%s_%s', tag_factor_name, epoch_name);
-        entry.align_event = epoch_details.event;
-        entry.time_window = epoch_details.window;
+        entry.name = sprintf('%s_%s', factor, epoch_name);
+        entry.type = 'standard';
+        entry.label = factor;
+        entry.epoch = align_map.(epoch_name);
         entry.cond1 = conds{1};
         entry.cond2 = conds{2};
 
-        if strcmp(factor_name, 'identity')
+        if strcmp(factor, 'identity')
             entry.trial_mask = {'is_in_rf', 'is_image_target'};
         else
             entry.trial_mask = 'is_in_rf';
         end
-        training_plan(end+1) = entry;
+
+        decoding_plan(end+1) = entry;
     end
 end
-condition_defs.decoding_plan.training_plan = training_plan;
 
-% H2. Testing Plan
-% Defines all generalization tests to be performed.
-testing_plan = struct('test_name', {}, 'type', {}, ...
-                      'train_model_tag', {}, 'test_cond1', {}, ...
-                      'test_cond2', {}, 'align_event', {}, ...
-                      'time_window', {}, 'test_align_event', {}, ...
-                      'test_time_window', {}, 'trial_mask', {});
-
-% --- Cross-Factor Tests ---
-cross_factors = {'Reward', 'Salience', 'Identity', 'Probability'};
-cross_epochs = {'Visual', 'Saccade'};
+% --- Cross-Factor Analyses ---
+cross_factors = {'reward', 'salience', 'identity', 'probability'};
+cross_epochs = {'visual', 'saccade'};
 for i = 1:length(cross_factors)
     train_factor = cross_factors{i};
     for j = 1:length(cross_factors)
@@ -174,87 +149,58 @@ for i = 1:length(cross_factors)
 
         for k = 1:length(cross_epochs)
             epoch_name = cross_epochs{k};
-            epoch_details = epoch_defs.(epoch_name);
 
             entry = struct();
-            entry.test_name = sprintf('%s_x_%s_%s', train_factor, ...
-                                      test_factor, epoch_name);
+            entry.name = sprintf('%s_x_%s_%s', train_factor, test_factor, epoch_name);
             entry.type = 'cross_factor';
-            entry.train_model_tag = sprintf('%s_%s', train_factor, ...
-                                            epoch_name);
+            entry.train_factor = train_factor;
+            entry.test_factor = test_factor;
+            entry.epoch = align_map.(epoch_name);
 
-            test_conds = condition_defs.condition_masks.(lower(test_factor));
-            entry.test_cond1 = test_conds{1};
-            entry.test_cond2 = test_conds{2};
-
-            entry.align_event = epoch_details.event;
-            entry.time_window = epoch_details.window;
-
-            % Fields for cross-time, leave empty
-            entry.test_align_event = '';
-            entry.test_time_window = [];
-
-            if strcmp(train_factor, 'Identity') || ...
-               strcmp(test_factor, 'Identity')
+            if strcmp(train_factor, 'identity') || strcmp(test_factor, 'identity')
                 entry.trial_mask = {'is_in_rf', 'is_image_target'};
             else
                 entry.trial_mask = 'is_in_rf';
             end
 
-            testing_plan(end+1) = entry;
+            decoding_plan(end+1) = entry;
         end
     end
 end
 
-% --- Cross-Time Tests ---
-main_factors = {'Reward', 'Salience', 'Identity', 'Probability'};
-for i = 1:length(main_factors)
-    factor = main_factors{i};
-    factor_conds = condition_defs.condition_masks.(lower(factor));
+% --- Cross-Time Analyses ---
+for i = 1:length(cross_factors)
+    factor = cross_factors{i};
 
     % Visual -> Saccade
     entry = struct();
-    entry.test_name = sprintf('%s_Vis_x_Sac', factor);
+    entry.name = sprintf('%s_vis_x_sac', factor);
     entry.type = 'cross_time';
-    entry.train_model_tag = sprintf('%s_Visual', factor);
-    entry.test_align_event = epoch_defs.Saccade.event;
-    entry.test_time_window = epoch_defs.Saccade.window;
-    entry.test_cond1 = factor_conds{1};
-    entry.test_cond2 = factor_conds{2};
-
-    % Fields for cross-factor, leave empty
-    entry.align_event = '';
-    entry.time_window = [];
-
-    if strcmp(factor, 'Identity')
+    entry.factor = factor;
+    entry.train_epoch = 'visual';
+    entry.test_epoch = 'saccade';
+    if strcmp(factor, 'identity')
         entry.trial_mask = {'is_in_rf', 'is_image_target'};
     else
         entry.trial_mask = 'is_in_rf';
     end
-    testing_plan(end+1) = entry;
+    decoding_plan(end+1) = entry;
 
     % Saccade -> Visual
     entry = struct();
-    entry.test_name = sprintf('%s_Sac_x_Vis', factor);
+    entry.name = sprintf('%s_sac_x_vis', factor);
     entry.type = 'cross_time';
-    entry.train_model_tag = sprintf('%s_Saccade', factor);
-    entry.test_align_event = epoch_defs.Visual.event;
-    entry.test_time_window = epoch_defs.Visual.window;
-    entry.test_cond1 = factor_conds{1};
-    entry.test_cond2 = factor_conds{2};
-
-    % Fields for cross-factor, leave empty
-    entry.align_event = '';
-    entry.time_window = [];
-
-    if strcmp(factor, 'Identity')
+    entry.factor = factor;
+    entry.train_epoch = 'saccade';
+    entry.test_epoch = 'visual';
+    if strcmp(factor, 'identity')
         entry.trial_mask = {'is_in_rf', 'is_image_target'};
     else
         entry.trial_mask = 'is_in_rf';
     end
-    testing_plan(end+1) = entry;
+    decoding_plan(end+1) = entry;
 end
-condition_defs.decoding_plan.testing_plan = testing_plan;
+condition_defs.decoding_plan = decoding_plan;
 
 
 %% --- II. Mode Dispatch ---
