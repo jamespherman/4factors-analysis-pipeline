@@ -65,10 +65,22 @@ time_bin_indices = time_vector >= time_window(1) & ...
 % The result is a [n_trials x n_neurons] matrix.
 X = squeeze(mean(binned_rates(:, :, time_bin_indices), 3));
 
-% Get logical masks for the two conditions and the trial mask
+% Get logical masks for the two conditions
 cond1_mask = conditions.(training_plan_item.cond1);
 cond2_mask = conditions.(training_plan_item.cond2);
-trial_mask = conditions.(training_plan_item.trial_mask);
+
+% Handle the trial_mask, which can be a single string or a cell array
+mask_field = training_plan_item.trial_mask;
+if iscell(mask_field)
+    % If it's a cell, combine masks with logical AND
+    trial_mask = true(size(cond1_mask)); % Start with all true
+    for i = 1:length(mask_field)
+        trial_mask = trial_mask & conditions.(mask_field{i});
+    end
+else
+    % If it's a single string, retrieve the mask directly
+    trial_mask = conditions.(mask_field);
+end
 
 % Combine masks to select the final trials for training
 training_mask = (cond1_mask | cond2_mask) & trial_mask;

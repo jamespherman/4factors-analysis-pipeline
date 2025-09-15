@@ -256,6 +256,28 @@ for i = 1:length(main_factors)
 end
 condition_defs.decoding_plan.testing_plan = testing_plan;
 
+% --- Standard CV Tests ---
+% For every trained model, create a 'standard' test for it.
+for i = 1:length(training_plan)
+    train_item = training_plan(i);
+    entry = struct();
+    entry.test_name = sprintf('%s_CV', train_item.model_tag);
+    entry.type = 'standard';
+    entry.train_model_tag = train_item.model_tag;
+
+    % --- Fill in dummy values for unused fields ---
+    entry.test_cond1 = '';
+    entry.test_cond2 = '';
+    entry.align_event = '';
+    entry.time_window = [];
+    entry.test_align_event = '';
+    entry.test_time_window = [];
+    entry.trial_mask = '';
+
+    testing_plan(end+1) = entry;
+end
+condition_defs.decoding_plan.testing_plan = testing_plan;
+
 
 %% --- II. Mode Dispatch ---
 % If the function is called without arguments, return the analysis plan.
