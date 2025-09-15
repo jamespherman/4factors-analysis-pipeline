@@ -94,6 +94,104 @@ condition_defs.behavior_plan(3).dependent_variable = {'endpoint_error'};
 condition_defs.behavior_plan(3).factors = {'reward', 'salience', 'identity', 'probability'};
 condition_defs.behavior_plan(3).trial_mask = 'is_in_rf';
 
+% H. Population Decoding Plan
+% Each entry defines a decoding analysis.
+% 'type' can be 'standard', 'cross_factor', or 'cross_time'.
+decoding_plan = struct('name', {}, 'type', {}, 'label', {}, 'epoch', {}, ...
+                       'cond1', {}, 'cond2', {}, 'trial_mask', {});
+
+factors = {'reward', 'salience', 'identity', 'probability', 'rf_location'};
+epochs = {'visual', 'delay', 'saccade'};
+align_map = struct('visual', 'targetOn', 'delay', 'fixOff', 'saccade', 'saccadeOnset');
+
+for i = 1:length(factors)
+    factor = factors{i};
+    conds = condition_defs.condition_masks.(factor);
+    for j = 1:length(epochs)
+        epoch_name = epochs{j};
+
+        entry = struct();
+        entry.name = sprintf('%s_%s', factor, epoch_name);
+        entry.type = 'standard';
+        entry.label = factor;
+        entry.epoch = align_map.(epoch_name);
+        entry.cond1 = conds{1};
+        entry.cond2 = conds{2};
+
+        if strcmp(factor, 'identity')
+            entry.trial_mask = {'is_in_rf', 'is_image_target'};
+        else
+            entry.trial_mask = 'is_in_rf';
+        end
+
+        decoding_plan(end+1) = entry;
+    end
+end
+
+% --- Cross-Factor Analyses ---
+cross_factors = {'reward', 'salience', 'identity', 'probability'};
+cross_epochs = {'visual', 'saccade'};
+for i = 1:length(cross_factors)
+    train_factor = cross_factors{i};
+    for j = 1:length(cross_factors)
+        if i == j, continue; end
+        test_factor = cross_factors{j};
+
+        for k = 1:length(cross_epochs)
+            epoch_name = cross_epochs{k};
+
+            entry = struct();
+            entry.name = sprintf('%s_x_%s_%s', train_factor, test_factor, epoch_name);
+            entry.type = 'cross_factor';
+            entry.train_factor = train_factor;
+            entry.test_factor = test_factor;
+            entry.epoch = align_map.(epoch_name);
+
+            if strcmp(train_factor, 'identity') || strcmp(test_factor, 'identity')
+                entry.trial_mask = {'is_in_rf', 'is_image_target'};
+            else
+                entry.trial_mask = 'is_in_rf';
+            end
+
+            decoding_plan(end+1) = entry;
+        end
+    end
+end
+
+% --- Cross-Time Analyses ---
+for i = 1:length(cross_factors)
+    factor = cross_factors{i};
+
+    % Visual -> Saccade
+    entry = struct();
+    entry.name = sprintf('%s_vis_x_sac', factor);
+    entry.type = 'cross_time';
+    entry.factor = factor;
+    entry.train_epoch = 'visual';
+    entry.test_epoch = 'saccade';
+    if strcmp(factor, 'identity')
+        entry.trial_mask = {'is_in_rf', 'is_image_target'};
+    else
+        entry.trial_mask = 'is_in_rf';
+    end
+    decoding_plan(end+1) = entry;
+
+    % Saccade -> Visual
+    entry = struct();
+    entry.name = sprintf('%s_sac_x_vis', factor);
+    entry.type = 'cross_time';
+    entry.factor = factor;
+    entry.train_epoch = 'saccade';
+    entry.test_epoch = 'visual';
+    if strcmp(factor, 'identity')
+        entry.trial_mask = {'is_in_rf', 'is_image_target'};
+    else
+        entry.trial_mask = 'is_in_rf';
+    end
+    decoding_plan(end+1) = entry;
+end
+condition_defs.decoding_plan = decoding_plan;
+
 
 %% --- II. Mode Dispatch ---
 % If the function is called without arguments, return the analysis plan.
@@ -140,6 +238,7 @@ isLowSalience = (trialInfo.salience == 1);
 % 3. Identity (stimType: 1=Face, 2=Non-face)
 isFaceTarget = (trialInfo.stimType == 1);
 isNonfaceTarget = (trialInfo.stimType == 2);
+is_image_target = isFaceTarget | isNonfaceTarget;
 
 % 4. Spatial Probability (Data-Driven)
 % Get target locations for all valid gSac_4factors trials
@@ -173,6 +272,7 @@ conditions.is_low_salience = isLowSalience(masterMask);
 
 conditions.is_face_target = isFaceTarget(masterMask);
 conditions.is_nonface_target = isNonfaceTarget(masterMask);
+conditions.is_image_target = is_image_target(masterMask);
 
 conditions.is_high_probability = isHighProbability(masterMask);
 conditions.is_low_probability = isLowProbability(masterMask);
