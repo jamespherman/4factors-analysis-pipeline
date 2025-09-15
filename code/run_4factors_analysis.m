@@ -131,6 +131,20 @@ for i = 1:height(manifest)
             n_total_steps = n_total_steps + 1;
         end
     end
+
+    % Count behavioral analyses
+    if isfield(analysis_plan, 'behavior_plan')
+        for j = 1:length(analysis_plan.behavior_plan)
+            analysis_name = analysis_plan.behavior_plan(j).name;
+            path_to_check = fullfile('analysis', 'behavioral_results', analysis_name);
+            S = substruct('.', strsplit(path_to_check, '/'));
+            try
+                subsref(session_data, S);
+            catch
+                n_total_steps = n_total_steps + 1;
+            end
+        end
+    end
     step_counter = 0;
 
     % --- Pipeline Stages ---
@@ -322,6 +336,40 @@ for i = 1:height(manifest)
         end
     end
 
+    % D. Behavioral Analyses
+    if isfield(analysis_plan, 'behavior_plan')
+        for j = 1:length(analysis_plan.behavior_plan)
+            plan_item = analysis_plan.behavior_plan(j);
+            analysis_name = plan_item.name;
+
+            % Check for existence of the result
+            run_this_analysis = force_rerun.analyses;
+            if ~run_this_analysis
+                path_to_check = fullfile('analysis', 'behavioral_results', analysis_name);
+                S = substruct('.', strsplit(path_to_check, '/'));
+                try
+                    subsref(session_data, S);
+                catch
+                    run_this_analysis = true;
+                end
+            end
+
+            if run_this_analysis
+                step_counter = step_counter + 1;
+                fprintf(['\n--- Session %s: Step %d/%d: Behavioral ' ...
+                    'Analysis for %s ---\n'], unique_id, step_counter, ...
+                    n_total_steps, analysis_name);
+                giveFeed(sprintf('--> Running Behavioral Analysis: %s', ...
+                    analysis_name));
+
+                result = analyze_behavior(session_data, conditions, plan_item);
+
+                session_data.analysis.behavioral_results.(analysis_name) = result;
+                data_updated = true;
+            end
+        end
+    end
+
     % --- Save Updated Data ---
     if data_updated
         giveFeed('Data was updated, saving back to session_data.mat...');
@@ -363,6 +411,20 @@ for i = 1:height(manifest)
         if ~isfield(session_data, 'analysis') || ...
            ~isfield(session_data.analysis, 'anova_results')
             is_analysis_complete = false;
+        end
+    end
+
+    % Check behavioral analyses
+    if is_analysis_complete && isfield(analysis_plan, 'behavior_plan')
+        for j = 1:length(analysis_plan.behavior_plan)
+            analysis_name = analysis_plan.behavior_plan(j).name;
+            path_to_check = fullfile('analysis', 'behavioral_results', analysis_name);
+            S = substruct('.', strsplit(path_to_check, '/'));
+            try
+                subsref(session_data, S);
+            catch
+                is_analysis_complete = false; break;
+            end
         end
     end
 

@@ -74,6 +74,27 @@ condition_defs.anova_plan.event = 'targetOn';
 condition_defs.anova_plan.factors = {'reward', 'salience', 'identity', 'probability'};
 condition_defs.anova_plan.trial_mask = 'is_in_rf';
 
+% G. Behavioral Analysis Plan
+% Each element defines a behavioral analysis to be run.
+condition_defs.behavior_plan(1).name = 'ReactionTime';
+condition_defs.behavior_plan(1).dependent_variable = ...
+    {'eventTimes.pdsSaccadeOn', '-', 'eventTimes.pdsFixOff'};
+condition_defs.behavior_plan(1).factors = {'reward', 'salience', 'identity', 'probability'};
+condition_defs.behavior_plan(1).trial_mask = 'is_in_rf';
+
+condition_defs.behavior_plan(2).name = 'PeakVelocity';
+condition_defs.behavior_plan(2).dependent_variable = {'trialInfo.peakVel'};
+condition_defs.behavior_plan(2).factors = {'reward', 'salience', 'identity', 'probability'};
+condition_defs.behavior_plan(2).trial_mask = 'is_in_rf';
+
+condition_defs.behavior_plan(3).name = 'EndpointError';
+% 'endpoint_error' is a special keyword that will be calculated by
+% the analysis function from postSacXY and target location.
+condition_defs.behavior_plan(3).dependent_variable = {'endpoint_error'};
+condition_defs.behavior_plan(3).factors = {'reward', 'salience', 'identity', 'probability'};
+condition_defs.behavior_plan(3).trial_mask = 'is_in_rf';
+
+
 %% --- II. Mode Dispatch ---
 % If the function is called without arguments, return the analysis plan.
 if nargin == 0
