@@ -70,27 +70,34 @@ for i_row = 1:n_rows
         hold on;
 
         % --- Data Processing and Plotting ---
-        % Check if this specific p-value exists for this event
-        if isfield(aggregated_sc_data.anova_results.(event_name), ...
-                p_value_name)
+        sc_event_data = aggregated_sc_data.anova_results.(event_name);
+        snc_event_data = aggregated_snc_data.anova_results.(event_name);
+
+        % Check if this specific p-value field exists for this event
+        if isfield(sc_event_data, p_value_name) && isfield(snc_event_data, p_value_name)
             
+            % Assume time_vector is stored at the event level
+            if isfield(sc_event_data, 'time_vector')
+                time_vector = sc_event_data.time_vector;
+            else
+                % Fallback for safety, though we expect a time_vector
+                n_time_bins = size(sc_event_data.(p_value_name).p_values, 2);
+                time_vector = 1:n_time_bins;
+            end
+
             % Process and Plot SC Data
-            p_values_sc = aggregated_sc_data.anova_results.( ...
-                event_name).(p_value_name);
+            p_values_sc = sc_event_data.(p_value_name).p_values;
             prop_sig_sc = mean(p_values_sc < 0.05, 1, 'omitnan');
-            n_time_bins = size(prop_sig_sc, 2);
-            time_vector = 1:n_time_bins; % Generic time bins
             
-            plot(time_vector, prop_sig_sc, 'Color', sc_color, ...
-                'LineWidth', 2);
+            plot(time_vector, prop_sig_sc, 'Color', sc_color, 'LineWidth', 2);
 
             % Process and Plot SNc Data
-            p_values_snc = aggregated_snc_data.anova_results.( ...
-                event_name).(p_value_name);
+            p_values_snc = snc_event_data.(p_value_name).p_values;
             prop_sig_snc = mean(p_values_snc < 0.05, 1, 'omitnan');
 
-            plot(time_vector, prop_sig_snc, 'Color', snc_color, ...
-                'LineWidth', 2);
+            plot(time_vector, prop_sig_snc, 'Color', snc_color, 'LineWidth', 2);
+
+            xlim(ax, [time_vector(1), time_vector(end)]);
         else
             % If data doesn't exist, display a note on the plot
             text(0.5, 0.5, 'N/A', 'HorizontalAlignment', 'center');

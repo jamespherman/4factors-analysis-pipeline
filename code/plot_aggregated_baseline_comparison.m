@@ -2,139 +2,141 @@
 %
 %   Generates a publication-quality summary figure that directly compares
 %   SC and SNc population results from the baseline comparison analysis.
+%   A separate figure is generated for each alignment event.
 %
 % INPUTS:
 %   aggregated_sc_data  - A struct containing aggregated data for SC.
 %   aggregated_snc_data - A struct containing aggregated data for SNc.
 %
 % Author: Jules
-% Date: 2025-09-13
+% Date: 2025-09-14
 %
 
 function plot_aggregated_baseline_comparison(aggregated_sc_data, aggregated_snc_data)
 
 %% Setup Paths
-% Define the project root, ensure the figures directory exists, and add the
-% 'utils' directory to the path so that helper functions can be found.
 project_root = fullfile(findOneDrive, 'Code', '4factors-analysis-pipeline');
 figures_dir = fullfile(project_root, 'figures');
 addpath(fullfile(project_root, 'code', 'utils'));
 
-%% Figure and Plotting Setup
-% Dynamically get the list of conditions from the data structure
-if isfield(aggregated_sc_data, 'baseline_comparison')
-    condition_names = fieldnames(aggregated_sc_data.baseline_comparison);
-else
-    condition_names = {};
-end
-n_conditions = length(condition_names);
-
-if n_conditions == 0
-    disp('No baseline_comparison data found to plot.');
+%% Input Validation
+if ~isfield(aggregated_sc_data, 'baseline_comparison') || ...
+   ~isfield(aggregated_snc_data, 'baseline_comparison')
+    warning('plot_aggregated_baseline_comparison:no_data', ...
+        'Baseline comparison data is missing from one or both input structs.');
     return;
 end
 
-fig = figure('Position', [100, 100, 400 * n_conditions, 600], ...
-    'Color', 'w');
-h_axes = gobjects(1, n_conditions);
+%% Dynamically Discover and Loop Through Alignment Events
+event_names = fieldnames(aggregated_sc_data.baseline_comparison);
 
-% Define colors for SC and SNc
-colors = richColors();
-sc_color = colors(1,:);
-snc_color = colors(2,:);
-pos_alpha = 0.6; % Face alpha for positive modulation
-neg_alpha = 0.3; % Face alpha for negative modulation
+for i_event = 1:length(event_names)
+    event_name = event_names{i_event};
 
-%% Main Plotting Loop
-for i_cond = 1:n_conditions
-    cond_name = condition_names{i_cond};
+    % Get conditions for the current event
+    condition_names = fieldnames(aggregated_sc_data.baseline_comparison.(event_name));
+    n_conditions = length(condition_names);
 
-    % --- Data Validation ---
-    if ~isfield(aggregated_sc_data, 'baseline_comparison') ...
-            || ~isfield(aggregated_sc_data.baseline_comparison, cond_name)
-        warning('plot_aggregated_baseline_comparison:no_sc_data', ...
-            'No data for %s in SC struct.', cond_name);
-        continue;
+    if n_conditions == 0; continue; end
+
+    %% Figure and Plotting Setup for the Current Event
+    fig = figure('Position', [100, 100, 400 * n_conditions, 600], 'Color', 'w');
+    h_axes = gobjects(1, n_conditions);
+
+    colors = richColors();
+    sc_color = colors(1,:);
+    snc_color = colors(2,:);
+    pos_alpha = 0.6; % Face alpha for increase
+    neg_alpha = 0.3; % Face alpha for decrease
+
+    %% Main Plotting Loop for Conditions
+    for i_cond = 1:n_conditions
+        cond_name = condition_names{i_cond};
+
+        sc_data_path = aggregated_sc_data.baseline_comparison.(event_name).(cond_name);
+        snc_data_path = aggregated_snc_data.baseline_comparison.(event_name).(cond_name);
+
+        time_vector = sc_data_path.time_vector;
+
+        % --- SC Data Processing ---
+        p_values_sc = sc_data_path.sig;
+        is_sig_sc = p_values_sc < 0.05;
+
+        post_event_fr_sc = sc_data_path.post_event_fr;
+        baseline_fr_sc = sc_data_path.baseline_fr;
+
+        increase_sc = is_sig_sc & (post_event_fr_sc > baseline_fr_sc);
+        decrease_sc = is_sig_sc & (post_event_fr_sc < baseline_fr_sc);
+
+        prop_sc_increase = sum(increase_sc, 1) / size(p_values_sc, 1);
+        prop_sc_decrease = -sum(decrease_sc, 1) / size(p_values_sc, 1);
+
+        % --- SNc Data Processing ---
+        p_values_snc = snc_data_path.sig;
+        is_sig_snc = p_values_snc < 0.05;
+
+        post_event_fr_snc = snc_data_path.post_event_fr;
+        baseline_fr_snc = snc_data_path.baseline_fr;
+
+        increase_snc = is_sig_snc & (post_event_fr_snc > baseline_fr_snc);
+        decrease_snc = is_sig_snc & (post_event_fr_snc < baseline_fr_snc);
+
+        prop_snc_increase = sum(increase_snc, 1) / size(p_values_snc, 1);
+        prop_snc_decrease = -sum(decrease_snc, 1) / size(p_values_snc, 1);
+
+        % --- Plotting (SC and SNc on same axes) ---
+        h_axes(1, i_cond) = mySubPlot([1, n_conditions, i_cond]);
+        hold on;
+
+        % Plot SC proportions
+        h_sc_inc = barStairsFill(time_vector, zeros(size(prop_sc_increase)), prop_sc_increase);
+        set(h_sc_inc(1), 'FaceColor', sc_color, 'EdgeColor', 'none', 'FaceAlpha', pos_alpha);
+        delete(h_sc_inc(2:3));
+
+        h_sc_dec = barStairsFill(time_vector, zeros(size(prop_sc_decrease)), prop_sc_decrease);
+        set(h_sc_dec(1), 'FaceColor', sc_color, 'EdgeColor', 'none', 'FaceAlpha', neg_alpha);
+        delete(h_sc_dec(2:3));
+
+        % Plot SNc proportions
+        h_snc_inc = barStairsFill(time_vector, zeros(size(prop_snc_increase)), prop_snc_increase);
+        set(h_snc_inc(1), 'FaceColor', snc_color, 'EdgeColor', 'none', 'FaceAlpha', pos_alpha);
+        delete(h_snc_inc(2:3));
+
+        h_snc_dec = barStairsFill(time_vector, zeros(size(prop_snc_decrease)), prop_snc_decrease);
+        set(h_snc_dec(1), 'FaceColor', snc_color, 'EdgeColor', 'none', 'FaceAlpha', neg_alpha);
+        delete(h_snc_dec(2:3));
+
+        % --- Formatting ---
+        title(h_axes(1, i_cond), strrep(cond_name, '_', ' '), 'Interpreter', 'none');
+        xlim([time_vector(1), time_vector(end)]);
+        line(xlim, [0, 0], 'Color', 'k', 'LineStyle', '--');
+        line([0, 0], ylim, 'Color', 'k', 'LineStyle', '--');
+        xlabel_str = sprintf('Time from %s Onset (s)', strrep(event_name, '_', ' '));
+        xlabel(xlabel_str);
     end
-    if ~isfield(aggregated_snc_data, 'baseline_comparison') ...
-            || ~isfield(aggregated_snc_data.baseline_comparison, cond_name)
-        warning('plot_aggregated_baseline_comparison:no_snc_data', ...
-            'No data for %s in SNc struct.', cond_name);
-        continue;
+
+    %% Figure Cleanup and Final Touches
+    if n_conditions > 1
+        set(h_axes(1, 2:end), 'YTickLabel', []);
     end
 
-    % --- Time Vector Loading ---
-    time_vector = aggregated_sc_data.baseline_comparison.(cond_name).time_vector;
+    ylabel(h_axes(1, 1), 'Proportion of Neurons');
 
-    % --- Data Extraction and Proportion Calculation ---
-    sig_sc = aggregated_sc_data.baseline_comparison.(cond_name).sig;
-    n_total_sc = size(sig_sc, 1);
-    prop_sc_increase = sum(sig_sc == 1, 1) / n_total_sc;
-    prop_sc_decrease = -sum(sig_sc == -1, 1) / n_total_sc; % Negative for plotting
+    sgtitle(sprintf('Baseline Comparison aligned to %s', strrep(event_name, '_', ' ')), ...
+        'Interpreter', 'none');
 
-    sig_snc = aggregated_snc_data.baseline_comparison.(cond_name).sig;
-    n_total_snc = size(sig_snc, 1);
-    prop_snc_increase = sum(sig_snc == 1, 1) / n_total_snc;
-    prop_snc_decrease = -sum(sig_snc == -1, 1) / n_total_snc; % Negative for plotting
+    h_leg_sc = patch(NaN, NaN, sc_color, 'FaceAlpha', pos_alpha);
+    h_leg_snc = patch(NaN, NaN, snc_color, 'FaceAlpha', pos_alpha);
+    legend([h_leg_sc, h_leg_snc], {'SC', 'SNc'}, 'Location', 'northeast', 'Box', 'off');
 
-    % --- Plotting (SC and SNc on same axes) ---
-    h_axes(1, i_cond) = mySubPlot([1, n_conditions, i_cond]);
-    hold on;
+    allAx = findall(fig, 'Type', 'Axes');
+    set(allAx, 'TickDir', 'Out', 'Color', 'none', ...
+        'XColor', 'k', 'YColor', 'k', 'LineWidth', 1);
 
-    % Plot SC proportions
-    h_sc_inc = barStairsFill(time_vector, zeros(size(prop_sc_increase)), prop_sc_increase);
-    set(h_sc_inc(1), 'FaceColor', sc_color, 'EdgeColor', 'none', 'FaceAlpha', pos_alpha);
-    delete(h_sc_inc(2:3));
-
-    h_sc_dec = barStairsFill(time_vector, zeros(size(prop_sc_decrease)), prop_sc_decrease);
-    set(h_sc_dec(1), 'FaceColor', sc_color, 'EdgeColor', 'none', 'FaceAlpha', neg_alpha);
-    delete(h_sc_dec(2:3));
-
-    % Plot SNc proportions
-    h_snc_inc = barStairsFill(time_vector, zeros(size(prop_snc_increase)), prop_snc_increase);
-    set(h_snc_inc(1), 'FaceColor', snc_color, 'EdgeColor', 'none', 'FaceAlpha', pos_alpha);
-    delete(h_snc_inc(2:3));
-
-    h_snc_dec = barStairsFill(time_vector, zeros(size(prop_snc_decrease)), prop_snc_decrease);
-    set(h_snc_dec(1), 'FaceColor', snc_color, 'EdgeColor', 'none', 'FaceAlpha', neg_alpha);
-    delete(h_snc_dec(2:3));
-
-    % --- Formatting ---
-    title_str = get_plot_title(cond_name);
-    title(h_axes(1, i_cond), title_str, 'Interpreter', 'none');
-    xlim([time_vector(1), time_vector(end)]);
-    line(xlim, [0, 0], 'Color', 'k', 'LineStyle', '--');
-    line([0, 0], ylim, 'Color', 'k', 'LineStyle', '--');
-    xlabel('Time from Event Onset (s)');
+    % Save figure
+    fig_filename = fullfile(figures_dir, ...
+        sprintf('aggregated_baseline_comparison_%s.pdf', event_name));
+    pdfSave(fig_filename, fig.Position(3:4)/72, fig);
 end
 
-%% Figure Cleanup and Final Touches
-% De-clutter axes
-if n_conditions > 1
-    set(h_axes(1, 2:end), 'YTickLabel', []);
-end
-
-% Add axis labels to outer plots
-ylabel(h_axes(1, 1), 'Proportion of Neurons');
-
-% Create a legend
-h_leg_sc = patch(NaN, NaN, sc_color, 'FaceAlpha', pos_alpha);
-h_leg_snc = patch(NaN, NaN, snc_color, 'FaceAlpha', pos_alpha);
-legend([h_leg_sc, h_leg_snc], {'SC', 'SNc'}, 'Location', 'northeast', 'Box', 'off');
-
-% set axes properties
-allAx = findall(fig, 'Type', 'Axes');
-set(allAx, 'TickDir', 'Out', 'Color', 'none', ...
-    'XColor', 'k', 'YColor', 'k', 'LineWidth', 1);
-
-% Save figure:
-fig_filename = fullfile(figures_dir, 'aggregated_baseline_comparison.pdf');
-pdfSave(fig_filename, fig.Position(3:4)/72, fig);
-
-end
-
-%% Local Helper Function
-function title_str = get_plot_title(cond_name)
-    % GET_PLOT_TITLE - Generates a plot title for a given condition.
-    title_str = sprintf('Modulation during: %s', strrep(cond_name, '_', ' '));
 end
