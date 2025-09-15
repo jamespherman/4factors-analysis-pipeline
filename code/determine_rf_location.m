@@ -21,9 +21,9 @@ function [rf_location_idx, hemisphere] = determineRfLocation(session_data)
 %                     hemisphere of the recorded SC.
 
 %% Setup Paths
-[~, parent_dir, ~] = fileparts(mfilename('fullpath'));
-[project_root, ~, ~] = fileparts(parent_dir);
-addpath(fullfile(project_root, 'utils'));
+project_root = fullfile(findOneDrive, 'Code', ...
+    '4factors-analysis-pipeline');
+addpath(fullfile(project_root, 'code', 'utils'));
 
 %% Initialize outputs
 rf_location_idx = NaN;

@@ -291,22 +291,22 @@ end
 % calculates the logical masks for each condition based on the trial data.
 sessionData = varargin{1};
 trialInfo = sessionData.trialInfo;
+eventTimes = sessionData.eventTimes;
 codes = initCodes;
 
 % --- Initial Trial Filtering (The Master Mask) ---
 % Identify trials belonging to the gSac_4factors task
 isGSac4factors = trialInfo.taskCode == codes.uniqueTaskCode_gSac_4factors;
 
-
 % Identify successfully completed trials (outcome == 1 is success)
-isSuccessful = trialInfo.outcome == 1;
+isSuccessful = ~cellfun(@isempty, eventTimes.rewardCell);
 
 % The master mask: valid, completed trials from the correct task
 masterMask = isGSac4factors & isSuccessful;
 
 % --- Receptive Field (RF) Conditions ---
 % Get the index of the target location inside the SC receptive field
-rfLocationIdx = analysis.determine_rf_location(sessionData);
+rfLocationIdx = determine_rf_location(sessionData);
 
 % Create logical masks based on the trial-by-trial target location
 isInRf = (trialInfo.pdsTargLocIdx == rfLocationIdx);
