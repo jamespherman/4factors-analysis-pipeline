@@ -9,8 +9,18 @@ function [conditions, condition_defs] = define_task_conditions(varargin)
 %     logical masks for various trial conditions based on the session's data.
 %
 % OUTPUTS:
-%   conditions:     Struct of logical masks for trial conditions.
-%   condition_defs: A struct containing the full, structured analysis plan.
+%   conditions:     A struct of logical masks for trial conditions, specific
+%                   to a single session's data. Each field is a logical
+%                   vector where `true` indicates that a trial meets a
+%                   specific condition (e.g., `is_high_reward`). These masks
+%                   are filtered to only include valid, successful trials
+%                   from the '4factors' task.
+%
+%   condition_defs: A struct containing the full, session-agnostic
+%                   analysis_plan. This serves as the single source of truth
+%                   for what analyses to run, what conditions to compare,
+%                   and how to configure them. It is used by the main
+%                   analysis pipeline to orchestrate the entire analysis.
 
 %% --- I. Define the Comprehensive Analysis Plan ---
 % This section defines the entire analysis plan. It is used by the main
