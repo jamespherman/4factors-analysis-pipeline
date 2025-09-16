@@ -28,26 +28,33 @@ addpath(project_root);
 giveFeed('Loading session manifest and analysis plan...');
 manifest_path = fullfile(project_root, 'config', 'session_manifest.csv');
 manifest = readtable(manifest_path);
-[~, ~, analysis_plan] = define_tokens_task_conditions(); % Get the canonical plan
+[~, analysis_plan] = define_task_conditions(); % Get the canonical plan
 baseline_events = {'CUE_ON', 'outcomeOn', 'reward'}; % This is hard-coded in the analysis fn
 giveFeed('Manifest and plan loaded.');
 
 %% Initialize Aggregated Data Structures
+% This section initializes the master data structures based on the canonical
+% analysis_plan. This replaces any old logic that dynamically discovered
+% the analysis structure.
 brain_areas = {'SC', 'SNc'};
 aggregated_data_by_area = containers.Map('KeyType', 'char', 'ValueType', 'any');
 
 for i_area = 1:length(brain_areas)
     area = brain_areas{i_area};
     agg_data = struct();
+
+    % This field will be populated with neuron-level session IDs
     agg_data.session_id = {};
 
-    % Initialize based on the known analysis plan
-    % 1. ROC Comparisons
+    % 1. Initialize ROC Comparison Results
+    agg_data.roc_comparison = struct();
     for j = 1:length(analysis_plan.roc_plan)
         comp = analysis_plan.roc_plan(j);
         agg_data.roc_comparison.(comp.event).(comp.name).sig = [];
     end
-    % 2. Baseline Comparisons
+
+    % 2. Initialize Baseline Comparison Results
+    agg_data.baseline_comparison = struct();
     for j = 1:length(analysis_plan.baseline_plan)
         comp = analysis_plan.baseline_plan(j);
         for i_event = 1:length(baseline_events)
@@ -55,7 +62,9 @@ for i_area = 1:length(brain_areas)
             agg_data.baseline_comparison.(event_name).(comp.name).sig = [];
         end
     end
-    % 3. ANOVA Results
+
+    % 3. Initialize ANOVA Results
+    agg_data.anova_results = struct();
     if analysis_plan.anova_plan.run
         for i_event = 1:length(analysis_plan.anova_plan.events)
             event_name = analysis_plan.anova_plan.events{i_event};
@@ -65,6 +74,22 @@ for i_area = 1:length(brain_areas)
             end
         end
     end
+
+    % 4. Initialize Behavioral Results
+    agg_data.behavioral_results = struct();
+    for j = 1:length(analysis_plan.behavior_plan)
+        analysis_name = analysis_plan.behavior_plan(j).name;
+        agg_data.behavioral_results.(analysis_name) = table();
+    end
+
+    % 5. Initialize Population Decoding Results
+    agg_data.population_decoding = struct();
+    for j = 1:length(analysis_plan.decoding_plan.testing_plan)
+        test_name = analysis_plan.decoding_plan.testing_plan(j).test_name;
+        agg_data.population_decoding.(test_name).accuracy = [];
+        agg_data.population_decoding.(test_name).accuracy_ci = [];
+    end
+
     aggregated_data_by_area(area) = agg_data;
 end
 
@@ -166,6 +191,47 @@ for i_session = 1:nSessions
                 end
                 agg_data.anova_results.(event).(p_name) = ...
                     [agg_data.anova_results.(event).(p_name); data_to_append];
+            end
+        end
+    end
+
+    % --- 4. Aggregate Behavioral Results ---
+    if isfield(session_data.analysis, 'behavioral_results')
+        for j = 1:length(analysis_plan.behavior_plan)
+            analysis_name = analysis_plan.behavior_plan(j).name;
+
+            if isfield(session_data.analysis.behavioral_results, analysis_name)
+                session_table = session_data.analysis.behavioral_results.(analysis_name);
+
+                % Add session_id to the table to track provenance
+                session_id_col = repmat({session_id}, height(session_table), 1);
+                session_table.session_id = session_id_col;
+
+                % Append to the master table
+                agg_data.behavioral_results.(analysis_name) = [ ...
+                    agg_data.behavioral_results.(analysis_name); ...
+                    session_table ...
+                ];
+            end
+        end
+    end
+
+    % --- 5. Aggregate Population Decoding Results ---
+    if isfield(session_data.analysis, 'population_decoding')
+        for j = 1:length(analysis_plan.decoding_plan.testing_plan)
+            test = analysis_plan.decoding_plan.testing_plan(j);
+            test_name = test.test_name;
+
+            if isfield(session_data.analysis.population_decoding, test_name)
+                res = session_data.analysis.population_decoding.(test_name);
+                agg_data.population_decoding.(test_name).accuracy = [ ...
+                    agg_data.population_decoding.(test_name).accuracy; ...
+                    res.accuracy ...
+                ];
+                agg_data.population_decoding.(test_name).accuracy_ci = [ ...
+                    agg_data.population_decoding.(test_name).accuracy_ci; ...
+                    res.accuracy_ci ...
+                ];
             end
         end
     end
