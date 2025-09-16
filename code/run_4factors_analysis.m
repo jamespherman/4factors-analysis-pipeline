@@ -26,7 +26,6 @@ force_rerun = struct(...
 [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
 addpath(fullfile(script_dir, 'utils'));
 project_root = fileparts(script_dir);
-addpath(project_root);
 
 tic;
 giveFeed = @(x)disp([num2str(round(toc, 1)) 's - ' x]);
@@ -83,12 +82,28 @@ for i = 1:height(manifest)
     conditions = define_task_conditions(session_data);
     giveFeed('Task conditions defined.');
 
+    % --- Dynamically determine a proxy event for checks ---
+    all_events = {};
+    plan_fields = fieldnames(analysis_plan);
+    for i_field = 1:length(plan_fields)
+        sub_plan = analysis_plan.(plan_fields{i_field});
+        if isstruct(sub_plan)
+            for j = 1:length(sub_plan)
+                if isfield(sub_plan(j), 'event')
+                    all_events{end+1} = sub_plan(j).event;
+                end
+            end
+        end
+    end
+    alignment_events = unique(all_events);
+    event_proxy = '';
+    if ~isempty(alignment_events)
+        event_proxy = alignment_events{1};
+    end
+
     % --- Dry run to calculate total number of steps for this session ---
     n_total_steps = 0;
     unique_id = session_id;
-    if ~isfield(session_data, 'metrics') || force_rerun.screening
-        n_total_steps = n_total_steps + 1;
-    end
     if ~strcmp(manifest.screening_status{i}, 'complete') || ...
             force_rerun.screening
         n_total_steps = n_total_steps + 1;
@@ -103,44 +118,71 @@ for i = 1:height(manifest)
         n_total_steps = n_total_steps + 1;
     end
 
-    % Count planned analyses
-    for j = 1:length(analysis_plan.baseline_plan)
-        comp_name = analysis_plan.baseline_plan(j).name;
-        path_to_check = fullfile('analysis', 'baseline_comparison', 'targetOn', comp_name);
-        S = substruct('.', strsplit(path_to_check, '/'));
-        try
-            subsref(session_data, S);
-        catch
-            n_total_steps = n_total_steps + 1;
+    % --- Dry Run: Count Analysis Steps ---
+    giveFeed('Dry run: calculating number of analysis steps...');
+
+    % A. Baseline Comparison Analyses
+    if ~isempty(event_proxy)
+        for j = 1:length(analysis_plan.baseline_plan)
+            comp_name = analysis_plan.baseline_plan(j).name;
+            path_to_check = fullfile('analysis', 'baseline_comparison', event_proxy, comp_name);
+            S = substruct('.', strsplit(path_to_check, '/'));
+            is_missing = false;
+            try
+                subsref(session_data, S);
+            catch
+                is_missing = true;
+            end
+            if is_missing || force_rerun.analyses
+                n_total_steps = n_total_steps + 1;
+            end
         end
     end
+
+    % B. ROC Comparison Analyses
     for j = 1:length(analysis_plan.roc_plan)
         comp = analysis_plan.roc_plan(j);
         path_to_check = fullfile('analysis', 'roc_comparison', comp.event, comp.name);
         S = substruct('.', strsplit(path_to_check, '/'));
+        is_missing = false;
         try
             subsref(session_data, S);
         catch
-            n_total_steps = n_total_steps + 1;
+            is_missing = true;
         end
-    end
-    if analysis_plan.anova_plan.run
-        if (~isfield(session_data, 'analysis') || ...
-           ~isfield(session_data.analysis, 'anova_results')) || ...
-            force_rerun.analyses
+        if is_missing || force_rerun.analyses
             n_total_steps = n_total_steps + 1;
         end
     end
 
-    % Count behavioral analyses
+    % C. N-way ANOVA Analysis
+    if analysis_plan.anova_plan.run
+        path_to_check = 'analysis.anova_results';
+        S = substruct('.', strsplit(path_to_check, '.'));
+        is_missing = false;
+        try
+            subsref(session_data, S);
+        catch
+            is_missing = true;
+        end
+        if is_missing || force_rerun.analyses
+            n_total_steps = n_total_steps + 1;
+        end
+    end
+
+    % D. Behavioral Analyses
     if isfield(analysis_plan, 'behavior_plan')
         for j = 1:length(analysis_plan.behavior_plan)
             analysis_name = analysis_plan.behavior_plan(j).name;
             path_to_check = fullfile('analysis', 'behavioral_results', analysis_name);
             S = substruct('.', strsplit(path_to_check, '/'));
+            is_missing = false;
             try
                 subsref(session_data, S);
             catch
+                is_missing = true;
+            end
+            if is_missing || force_rerun.analyses
                 n_total_steps = n_total_steps + 1;
             end
         end
@@ -148,102 +190,36 @@ for i = 1:height(manifest)
 
     % E. Population Decoding Analyses
     if isfield(analysis_plan, 'decoding_plan')
+        % The execution has two potential steps, which are counted independently.
 
-        % --- Stage 1: Train Models ---
-        % Idempotency Check: run if results field doesn't exist or rerun is forced
-        run_training = false;
-        if ~isfield(session_data, 'analysis') || ...
-           ~isfield(session_data.analysis, 'population_decoding')
-            run_training = true;
-        end
-        if force_rerun.analyses
-            run_training = true;
+        % Stage 1: Count training step
+        needs_training = force_rerun.analyses || ~isfield(session_data, 'analysis') || ~isfield(session_data.analysis, 'population_decoding');
+        if needs_training
+            n_total_steps = n_total_steps + 1;
         end
 
-        trained_models = {};
-        if run_training
-            step_counter = step_counter + 1;
-            fprintf(['\n--- Session %s: Step %d/%d: Population ' ...
-                'Decoding: Model Training ---\n'], unique_id, ...
-                step_counter, n_total_steps);
-            giveFeed('--> Training all decoding models...');
-
-            training_plan = analysis_plan.decoding_plan.training_plan;
-            for j = 1:length(training_plan)
-                modelInfo = train_decoder(session_data, conditions, ...
-                    core_data, training_plan(j));
-                trained_models{end+1} = modelInfo;
-            end
-
-            % Store models temporarily; they won't be saved in session_data
-            session_data.analysis.population_decoding.trained_models = trained_models;
-            data_updated = true;
-            giveFeed('--> Model training complete.');
-        else
-            giveFeed('--> Model training already complete, loading models.');
-            trained_models = session_data.analysis.population_decoding.trained_models;
-        end
-
-        % --- Stage 2: Test Models ---
-        testing_plan = analysis_plan.decoding_plan.testing_plan;
+        % Stage 2: Count testing step
         is_any_test_missing = false;
-        for j = 1:length(testing_plan)
-            test_name = testing_plan(j).test_name;
-            if ~isfield(session_data.analysis.population_decoding, test_name)
-                is_any_test_missing = true;
-                break;
-            end
-        end
-
-        if is_any_test_missing || force_rerun.analyses
-            step_counter = step_counter + 1;
-            fprintf(['\n--- Session %s: Step %d/%d: Population ' ...
-                'Decoding: Model Testing ---\n'], unique_id, ...
-                step_counter, n_total_steps);
-            giveFeed('--> Running decoding model tests...');
-
+        if isfield(session_data, 'analysis') && isfield(session_data.analysis, 'population_decoding')
+            testing_plan = analysis_plan.decoding_plan.testing_plan;
             for j = 1:length(testing_plan)
-                testing_item = testing_plan(j);
-                % Only run if result is missing or rerun is forced
-                if ~isfield(session_data.analysis.population_decoding, testing_item.test_name) || force_rerun.analyses
-                    results = test_decoder(trained_models, conditions, core_data, testing_item);
-                    session_data.analysis.population_decoding.(testing_item.test_name) = results;
-                    data_updated = true;
-                end
-            end
-            giveFeed('--> Model testing complete.');
-        else
-            giveFeed('--> All decoding tests already complete.');
-        end
-
-        % Clean up temporary trained models field
-        if isfield(session_data.analysis.population_decoding, 'trained_models')
-            session_data.analysis.population_decoding = ...
-                rmfield(session_data.analysis.population_decoding, 'trained_models');
-        end
-    end
-
-    % Count population decoding analyses
-    if isfield(analysis_plan, 'decoding_plan') && ...
-            isfield(analysis_plan.decoding_plan, 'testing_plan')
-        % One step for all training, one for all testing
-        if ~isfield(session_data, 'analysis') || ...
-           ~isfield(session_data.analysis, 'population_decoding') || ...
-           force_rerun.analyses
-            n_total_steps = n_total_steps + 2;
-        else
-            % Check if any test result is missing
-            is_testing_incomplete = false;
-            for j = 1:length(analysis_plan.decoding_plan.testing_plan)
-                test_name = analysis_plan.decoding_plan.testing_plan(j).test_name;
+                test_name = testing_plan(j).test_name;
                 if ~isfield(session_data.analysis.population_decoding, test_name)
-                    is_testing_incomplete = true;
+                    is_any_test_missing = true;
                     break;
                 end
             end
-            if is_testing_incomplete
-                 n_total_steps = n_total_steps + 1;
-            end
+        else
+            % If the main struct is missing, tests are de facto missing.
+            is_any_test_missing = true;
+        end
+
+        needs_testing = force_rerun.analyses || is_any_test_missing;
+        if needs_testing
+            % This step is counted independently of the training step. If
+            % training is happening, the whole 'population_decoding' field
+            % will be new, so testing will also need to run.
+            n_total_steps = n_total_steps + 1;
         end
     end
     step_counter = 0;
@@ -351,42 +327,38 @@ for i = 1:height(manifest)
     giveFeed('Checking for missing analyses...');
 
     % A. Baseline Comparison Analyses
-    for j = 1:length(analysis_plan.baseline_plan)
-        comp_name = analysis_plan.baseline_plan(j).name;
+    if ~isempty(event_proxy)
+        for j = 1:length(analysis_plan.baseline_plan)
+            comp_name = analysis_plan.baseline_plan(j).name;
 
-        % Check for existence of the new, nested structure. We check for
-        % the first event ('targetOn') as a proxy for the whole analysis.
-        run_this_analysis = force_rerun.analyses;
-        if ~run_this_analysis
-            path_to_check = fullfile('analysis', 'baseline_comparison', 'targetOn', comp_name);
+            % Standardized Idempotency Check
+            is_missing = false;
+            path_to_check = fullfile('analysis', 'baseline_comparison', event_proxy, comp_name);
             S = substruct('.', strsplit(path_to_check, '/'));
             try
                 subsref(session_data, S);
             catch
-                run_this_analysis = true;
+                is_missing = true;
             end
-        end
 
-        if run_this_analysis
-            step_counter = step_counter + 1;
-            fprintf(['\n--- Session %s: Step %d/%d: Baseline ' ...
-                'Comparison for %s ---\n'], unique_id, step_counter, ...
-                n_total_steps, comp_name);
-            giveFeed(sprintf('--> Running Baseline Comparison: %s', ...
-                comp_name));
+            if is_missing || force_rerun.analyses
+                step_counter = step_counter + 1;
+                fprintf(['\n--- Session %s: Step %d/%d: Baseline ' ...
+                    'Comparison for %s ---\n'], unique_id, step_counter, ...
+                    n_total_steps, comp_name);
+                giveFeed(sprintf('--> Running Baseline Comparison: %s', comp_name));
 
-            % This function returns a struct with event names as fields
-            result_by_event = analyze_baseline_comparison(core_data, ...
-                conditions, 'condition', comp_name);
+                result_by_event = analyze_baseline_comparison(core_data, ...
+                    conditions, 'condition', comp_name);
 
-            % Merge the results into the new standardized structure
-            event_names = fieldnames(result_by_event);
-            for k = 1:length(event_names)
-                event_name = event_names{k};
-                session_data.analysis.baseline_comparison.(event_name).(comp_name) = ...
-                    result_by_event.(event_name);
+                event_names = fieldnames(result_by_event);
+                for k = 1:length(event_names)
+                    event_name = event_names{k};
+                    session_data.analysis.baseline_comparison.(event_name).(comp_name) = ...
+                        result_by_event.(event_name);
+                end
+                data_updated = true;
             end
-            data_updated = true;
         end
     end
 
@@ -394,29 +366,24 @@ for i = 1:height(manifest)
     for j = 1:length(analysis_plan.roc_plan)
         comp = analysis_plan.roc_plan(j);
 
-        % Check for the existence of the new, nested structure.
-        run_this_analysis = force_rerun.analyses;
-        if ~run_this_analysis
-            path_to_check = fullfile('analysis', 'roc_comparison', comp.event, comp.name);
-            S = substruct('.', strsplit(path_to_check, '/'));
-            try
-                subsref(session_data, S);
-            catch
-                run_this_analysis = true;
-            end
+        % Standardized Idempotency Check
+        is_missing = false;
+        path_to_check = fullfile('analysis', 'roc_comparison', comp.event, comp.name);
+        S = substruct('.', strsplit(path_to_check, '/'));
+        try
+            subsref(session_data, S);
+        catch
+            is_missing = true;
         end
 
-        if run_this_analysis
+        if is_missing || force_rerun.analyses
             step_counter = step_counter + 1;
             fprintf(['\n--- Session %s: Step %d/%d: ROC Comparison ' ...
                 'for %s ---\n'], unique_id, step_counter, ...
                 n_total_steps, comp.name);
             giveFeed(sprintf('--> Running ROC Comparison: %s', comp.name));
 
-            % This function now returns a result nested by event name
             result = analyze_roc_comparison(core_data, conditions, 'comparison', comp);
-
-            % Store the result in the new standardized structure
             session_data.analysis.roc_comparison.(comp.event).(comp.name) = result;
             data_updated = true;
         end
@@ -424,9 +391,17 @@ for i = 1:height(manifest)
 
     % C. N-way ANOVA Analysis
     if analysis_plan.anova_plan.run
-        if (~isfield(session_data, 'analysis') || ...
-           ~isfield(session_data.analysis, 'anova_results')) ...
-           || force_rerun.analyses
+        % Standardized Idempotency Check
+        is_missing = false;
+        path_to_check = 'analysis.anova_results';
+        S = substruct('.', strsplit(path_to_check, '.'));
+        try
+            subsref(session_data, S);
+        catch
+            is_missing = true;
+        end
+
+        if is_missing || force_rerun.analyses
             step_counter = step_counter + 1;
             fprintf('\n--- Session %s: Step %d/%d: N-way ANOVA ---\n', ...
                 unique_id, step_counter, n_total_steps);
@@ -443,31 +418,87 @@ for i = 1:height(manifest)
             plan_item = analysis_plan.behavior_plan(j);
             analysis_name = plan_item.name;
 
-            % Check for existence of the result
-            run_this_analysis = force_rerun.analyses;
-            if ~run_this_analysis
-                path_to_check = fullfile('analysis', 'behavioral_results', analysis_name);
-                S = substruct('.', strsplit(path_to_check, '/'));
-                try
-                    subsref(session_data, S);
-                catch
-                    run_this_analysis = true;
-                end
+            % Standardized Idempotency Check
+            is_missing = false;
+            path_to_check = fullfile('analysis', 'behavioral_results', analysis_name);
+            S = substruct('.', strsplit(path_to_check, '/'));
+            try
+                subsref(session_data, S);
+            catch
+                is_missing = true;
             end
 
-            if run_this_analysis
+            if is_missing || force_rerun.analyses
                 step_counter = step_counter + 1;
                 fprintf(['\n--- Session %s: Step %d/%d: Behavioral ' ...
                     'Analysis for %s ---\n'], unique_id, step_counter, ...
                     n_total_steps, analysis_name);
-                giveFeed(sprintf('--> Running Behavioral Analysis: %s', ...
-                    analysis_name));
+                giveFeed(sprintf('--> Running Behavioral Analysis: %s', analysis_name));
 
                 result = analyze_behavior(session_data, conditions, plan_item);
-
                 session_data.analysis.behavioral_results.(analysis_name) = result;
                 data_updated = true;
             end
+        end
+    end
+
+    % E. Population Decoding Analyses
+    if isfield(analysis_plan, 'decoding_plan')
+        % Idempotency check for the entire decoding suite. The suite is run
+        % if any of its final test results are missing, ensuring that
+        % transient trained models are always available for testing.
+        run_decoding_suite = false;
+        if force_rerun.analyses
+            run_decoding_suite = true;
+        else
+            if ~isfield(session_data, 'analysis') || ~isfield(session_data.analysis, 'population_decoding')
+                run_decoding_suite = true;
+            else
+                testing_plan = analysis_plan.decoding_plan.testing_plan;
+                for j = 1:length(testing_plan)
+                    test_name = testing_plan(j).test_name;
+                    if ~isfield(session_data.analysis.population_decoding, test_name)
+                        run_decoding_suite = true;
+                        break;
+                    end
+                end
+            end
+        end
+
+        if run_decoding_suite
+            % --- Stage 1: Train Models ---
+            step_counter = step_counter + 1;
+            fprintf(['\n--- Session %s: Step %d/%d: Population ' ...
+                'Decoding: Model Training ---\n'], unique_id, ...
+                step_counter, n_total_steps);
+            giveFeed('--> Training all decoding models...');
+
+            trained_models = {};
+            training_plan = analysis_plan.decoding_plan.training_plan;
+            for j = 1:length(training_plan)
+                modelInfo = train_decoder(session_data, conditions, ...
+                    core_data, training_plan(j));
+                trained_models{end+1} = modelInfo;
+            end
+            giveFeed('--> Model training complete.');
+
+            % --- Stage 2: Test Models ---
+            step_counter = step_counter + 1;
+            fprintf(['\n--- Session %s: Step %d/%d: Population ' ...
+                'Decoding: Model Testing ---\n'], unique_id, ...
+                step_counter, n_total_steps);
+            giveFeed('--> Running decoding model tests...');
+
+            testing_plan = analysis_plan.decoding_plan.testing_plan;
+            for j = 1:length(testing_plan)
+                testing_item = testing_plan(j);
+                results = test_decoder(trained_models, conditions, core_data, testing_item);
+                session_data.analysis.population_decoding.(testing_item.test_name) = results;
+                data_updated = true;
+            end
+            giveFeed('--> Model testing complete.');
+        else
+            giveFeed('--> Population decoding suite already complete.');
         end
     end
 
@@ -482,20 +513,24 @@ for i = 1:height(manifest)
     end
 
     % --- Verify Analysis Completion & Update Manifest ---
+    giveFeed('Verifying analysis completion status...');
     is_analysis_complete = true;
-    % Check baseline comparisons
-    for j = 1:length(analysis_plan.baseline_plan)
-        comp_name = analysis_plan.baseline_plan(j).name;
-        % Check for the first event as a proxy
-        path_to_check = fullfile('analysis', 'baseline_comparison', 'targetOn', comp_name);
-        S = substruct('.', strsplit(path_to_check, '/'));
-        try
-            subsref(session_data, S);
-        catch
-            is_analysis_complete = false; break;
+
+    % A. Check baseline comparisons
+    if is_analysis_complete && ~isempty(event_proxy)
+        for j = 1:length(analysis_plan.baseline_plan)
+            comp_name = analysis_plan.baseline_plan(j).name;
+            path_to_check = fullfile('analysis', 'baseline_comparison', event_proxy, comp_name);
+            S = substruct('.', strsplit(path_to_check, '/'));
+            try
+                subsref(session_data, S);
+            catch
+                is_analysis_complete = false; break;
+            end
         end
     end
-    % Check ROC comparisons
+
+    % B. Check ROC comparisons
     if is_analysis_complete
         for j = 1:length(analysis_plan.roc_plan)
             comp = analysis_plan.roc_plan(j);
@@ -508,14 +543,19 @@ for i = 1:height(manifest)
             end
         end
     end
+
+    % C. Check N-way ANOVA
     if is_analysis_complete && analysis_plan.anova_plan.run
-        if ~isfield(session_data, 'analysis') || ...
-           ~isfield(session_data.analysis, 'anova_results')
+        path_to_check = 'analysis.anova_results';
+        S = substruct('.', strsplit(path_to_check, '.'));
+        try
+            subsref(session_data, S);
+        catch
             is_analysis_complete = false;
         end
     end
 
-    % Check behavioral analyses
+    % D. Check behavioral analyses
     if is_analysis_complete && isfield(analysis_plan, 'behavior_plan')
         for j = 1:length(analysis_plan.behavior_plan)
             analysis_name = analysis_plan.behavior_plan(j).name;
@@ -529,10 +569,11 @@ for i = 1:height(manifest)
         end
     end
 
-    % Check population decoding results
+    % E. Check population decoding results
     if is_analysis_complete && isfield(analysis_plan, 'decoding_plan')
-        for j = 1:length(analysis_plan.decoding_plan.testing_plan)
-            test_name = analysis_plan.decoding_plan.testing_plan(j).test_name;
+        testing_plan = analysis_plan.decoding_plan.testing_plan;
+        for j = 1:length(testing_plan)
+            test_name = testing_plan(j).test_name;
             path_to_check = fullfile('analysis', 'population_decoding', test_name);
             S = substruct('.', strsplit(path_to_check, '/'));
             try
@@ -545,6 +586,9 @@ for i = 1:height(manifest)
 
     if is_analysis_complete
         manifest.analysis_status{i} = 'complete';
+        giveFeed('All analyses for this session are complete.');
+    else
+        giveFeed('Some analyses for this session are still pending.');
     end
 
     giveFeed(sprintf('--- Finished processing for session: %s ---\n', ...
