@@ -146,7 +146,8 @@ for i = 1:nBoxes
     
     if(inci)
         try
-            h = drawbar(x(i),[yCI(i,1) ymci(i,1) y(i) ymci(i,2) yCI(i,2)],br);
+            h = drawBAR(x(i),[yCI(i,1) ymci(i,1) y(i) ymci(i,2) ...
+                yCI(i,2)],br);
         catch me
             keyboard
         end
@@ -180,4 +181,42 @@ for i = 1:nBoxes
 end
 if(hflg)
     hold off
+end
+
+end
+
+function [fo, po] = drawBAR(x, y, ci, w, varargin)
+
+% [fo, po] = drawBAR(x, y, ci, w, [vertBars?])
+%
+% set vertBars to true for a vertical bar, false for a horizontal bar.
+
+vertBars = true;
+if nargin > 4
+    vertBars = varargin{1};
+end
+
+if vertBars
+    Xf = x + (w/2)*[-1 -1 1 1];
+    Yf = [ci(2) ci(1) ci(1) ci(2)];
+    Xp = x + (w/2)*[-1 1];
+    Yp = y*[1 1];
+else
+    Yf = y + (w/2)*[-1 -1 1 1];
+    Xf = [ci(2) ci(1) ci(1) ci(2)];
+    Yp = y + (w/2)*[-1 1];
+    Xp = x*[1 1];
+end
+
+if(ishold)
+    hf = 1;
+else
+    hf = 0;
+    hold on
+end
+    fo   = fill(Xf, Yf, 0.8*[1 1 1],'EdgeColor','none');
+    po   = plot(Xp, Yp, 'k', 'LineWidth', 1);
+if(~hf)
+    hold off
+end
 end
