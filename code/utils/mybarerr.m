@@ -1,222 +1,147 @@
-function [fo, po] = mybarerr(x, y, yCI, varargin)
-
-% [fo, po] = mybarerr(x,y,yCI,[yi],[colored bars? (default = 0)],[bar "radius"],[x or y bars])
-
-nBoxes  = length(x);        % number of bars/boxes
-lusv    = 1.5;              % lighten-up scale value
-sucv    = 0.6;             % single-use color value
-cvu     = [sucv sucv sucv]; % color value
-dcvu    = cvu/lusv;         % dark color value
-xy      = 0;                % x or y bars?
-inci    = 0;                % two-error intervals?
-cf      = 0;                % colored bars?
-brm     = [];               % manual bar "radius"
-
-switch nargin
-    case 4
-        inci    = ~isscalar(varargin{1});
-    case 5
-        if(~isempty(varargin{1}))
-            inci    = ~isscalar(varargin{1});
-        end
-        if(isscalar(varargin{2}))
-            cf      = varargin{2};
-        else
-            if(~isempty(varargin{2}))
-                switch size(varargin{2},1)
-                    case 1
-                        cvu = varargin{2};
-                    otherwise
-                        cv  = varargin{2};
-                        dcv = cv/lusv;
-                end
-            end
-        end
-    case 6
-        if(~isempty(varargin{1}))
-            inci    = ~isscalar(varargin{1});
-        end
-        if(isscalar(varargin{2}))
-            cf      = varargin{2};
-        else
-            if(~isempty(varargin{2}))
-                switch size(varargin{2},1)
-                    case 1
-                        cvu = varargin{2};
-                    otherwise
-                        cv  = varargin{2};
-                        dcv = cv/lusv;
-                end
-            end
-        end
-        brm     = varargin{3};
-    case 7
-        if ~isempty(varargin{1})
-            inci    = ~isscalar(varargin{1});
-        end
-        if(isscalar(varargin{2}))
-            cf      = varargin{2};
-        else
-            if(~isempty(varargin{2}))
-                switch size(varargin{2},1)
-                    case 1
-                        cvu = varargin{2};
-                    otherwise
-                        cv  = varargin{2};
-                        dcv = cv/lusv;
-                end
-            end
-        end
-        if(~isempty(varargin{3}))
-            brm     = varargin{3};
-        end
-        xy      = varargin{4};
-end
-
-% make sure "yCI" rows / columns match "x"
-[nCiRows, nCiCols] = size(yCI);
-if nCiRows ~= nBoxes
-    yCI = yCI';
-end
-
-% if there's going to be two intervals drawn (like a mean-ci as well as a
-% 95% distribution interval, assign the input argument.
-if(inci)
-    ymci = varargin{1};
-end
-
-% if colored bars are going to be drawn, do some color stuff.
-temp = whos;
-if(cf)
-    switch length(varargin{1})
-        case 1
-            if(varargin{1}<1)
-                pct1 = 1-varargin{1};
-                pct2 = 1-pct1;
-            else
-                pct1 = 0.2;
-                pct2 = 0.8;
-            end
-            cv      = hsv(nBoxes)*pct1 + repmat(pct2,nBoxes,3);
-            dcv     = cv/lusv;
-        otherwise
-            if(isempty(varargin{1}))
-                cv = cool(nBoxes);
-                cf = 0;
-            else
-                pct1 = 0.2;
-                pct2 = 0.8;
-                cv      = repmat(varargin{1}*pct1,nBoxes,1) + ...
-                    repmat(pct2,nBoxes,3);
-                dcv     = cv/lusv;
-            end
-    end
-elseif(any(strcmp({temp(:).name},'cv')))
-    cf = 1;
-end
-
-% chose the bar-radius: manual, automatic based on many bars, or
-% fixed based on a single bar.
-if(length(x)>1 || ~isempty(brm))
-    if(isempty(brm))
-        br = min([0.4*min(diff(sort(x(:)))), 0.4]);
-    else
-        br = brm;
-    end
-else
-    br = 0.4;
-end
-
-% plotting
-if(ishold)
-    hflg = 0;
-else
-    hold on
-    hflg = 1;
-end
-hold on
-
-for i = 1:nBoxes
-    if(cf)
-        cvu     = cv(i,:);
-        dcvu    = dcv(i,:);
-    end
-    x1 = x(i)-br;
-    x2 = x(i)+br;
-    
-    if(inci)
-        try
-            h = drawBAR(x(i),[yCI(i,1) ymci(i,1) y(i) ymci(i,2) ...
-                yCI(i,2)],br);
-        catch me
-            keyboard
-        end
-        if(cf)
-            keyboard
-        end
-    else
-        try
-            if ~xy
-                Xfill = [x2 x2 x1 x1];
-                Yfill = [yCI(i,:) fliplr(yCI(i,:))];
-                Xplot = [x1+br/10 x2-br/10];
-                Yplot = [y(i) y(i)];
-            else
-                Yfill = [x2 x2 x1 x1];
-                Xfill = [yCI(i,:) fliplr(yCI(i,:))];
-                Yplot = [x1+br/10 x2-br/10];
-                Xplot = [y(i) y(i)];
-            end
-            
-            fo(i) = fill(Xfill, Yfill,cvu);
-            po(i) = plot(Xplot, Yplot, ...
-                'LineWidth', 3, 'Color', dcvu);
-            set(fo(i), 'EdgeColor', cvu)
-        catch me
-            
-            disp('something went wrong with mybarrerr...')
-%             keyboard
-        end
-    end
-end
-if(hflg)
-    hold off
-end
-
-end
-
-function [fo, po] = drawBAR(x, y, ci, w, varargin)
-
-% [fo, po] = drawBAR(x, y, ci, w, [vertBars?])
+function [b, e] = mybarerr(x, y, yCI, varargin)
+% [b, e] = mybarerr(x, y, yCI, Name, Value)
 %
-% set vertBars to true for a vertical bar, false for a horizontal bar.
+% Creates a bar plot with specified error bars. This function is a
+% modern implementation that leverages MATLAB's built-in plotting
+% functions and provides easy manipulation of graphics object appearances.
+%
+% INPUTS:
+%   x                   - A vector specifying the x-coordinates of the bars.
+%   y                   - A vector specifying the height of the bars.
+%   yCI                 - A 2-column matrix specifying the confidence
+%                         intervals for each bar. The first column holds
+%                         the lower bounds, and the second column holds
+%                         the upper bounds.
+%
+% OPTIONAL NAME-VALUE PAIR ARGUMENTS:
+%   'BarWidth'          - Width of the bars. Default is 0.8.
+%   'FaceColor'         - Color of the bars' faces. Can be a single color
+%                         or an N-by-3 matrix for individual bar colors.
+%                         Default is MATLAB's standard blue.
+%   'EdgeColor'         - Color of the bars' edges. Default is 'none'.
+%   'Orientation'       - Orientation, 'vertical' (default) or 'horizontal'.
+%   'ErrorBarColor'     - Color of the error bars. Default is black.
+%   'ErrorBarWidth'     - Line width of the error bars. Default is 1.5.
+%   'ErrorBarCapSize'   - Size of the cap on the error bars. Default is 0.
+%
+% OUTPUTS:
+%   b                   - The bar series graphics object.
+%   e                   - The error bar series graphics object.
+%
+% EXAMPLE:
+%   x = 1:5;
+%   y = [20 35 40 55 70];
+%   err = [5 8 10 6 9];
+%   yCI = [y - err; y + err]';
+%   figure;
+%   [b, e] = mybarerr(x, y, yCI, 'FaceColor', 'b');
+%   b.FaceAlpha = 0.5;
+%   e.LineStyle = '--';
+%   title('Modern Bar Plot with Error Bars');
 
-vertBars = true;
-if nargin > 4
-    vertBars = varargin{1};
-end
+    % Check for the correct number of input arguments.
+    if nargin < 3
+        error('mybarerr:NotEnoughInputs', ...
+            'This function requires at least three input arguments.');
+    end
 
-if vertBars
-    Xf = x + (w/2)*[-1 -1 1 1];
-    Yf = [ci(2) ci(1) ci(1) ci(2)];
-    Xp = x + (w/2)*[-1 1];
-    Yp = y*[1 1];
-else
-    Yf = y + (w/2)*[-1 -1 1 1];
-    Xf = [ci(2) ci(1) ci(1) ci(2)];
-    Yp = y + (w/2)*[-1 1];
-    Xp = x*[1 1];
-end
+    % Use inputParser for robust name-value pair argument handling.
+    p = inputParser;
 
-if(ishold)
-    hf = 1;
-else
-    hf = 0;
-    hold on
-end
-    fo   = fill(Xf, Yf, 0.8*[1 1 1],'EdgeColor','none');
-    po   = plot(Xp, Yp, 'k', 'LineWidth', 1);
-if(~hf)
-    hold off
-end
+    % Define validation functions for arguments.
+    isColorSpec = @(x) (ischar(x) && isvector(x)) || ...
+        (isnumeric(x) && isvector(x) && length(x) == 3) || ...
+        (isnumeric(x) && ismatrix(x) && size(x, 2) == 3);
+    isValidOrientation = @(x) any(validatestring(x, ...
+        {'vertical', 'horizontal'}));
+
+    % Define default values for optional parameters.
+    defaultBarWidth = 0.8;
+    % Default FaceColor is MATLAB's standard blue.
+    defaultFaceColor = [0 0.4470 0.7410];
+    defaultEdgeColor = 'none';
+    defaultOrientation = 'vertical';
+    % Default ErrorBarColor is black.
+    defaultErrorBarColor = [0 0 0];
+    defaultErrorBarWidth = 1.5;
+    defaultErrorBarCapSize = 0;
+
+    % Add the parameters to the input parser.
+    addParameter(p, 'BarWidth', defaultBarWidth, @isnumeric);
+    addParameter(p, 'FaceColor', defaultFaceColor, isColorSpec);
+    addParameter(p, 'EdgeColor', defaultEdgeColor, isColorSpec);
+    addParameter(p, 'Orientation', defaultOrientation, isValidOrientation);
+    addParameter(p, 'ErrorBarColor', defaultErrorBarColor, isColorSpec);
+    addParameter(p, 'ErrorBarWidth', defaultErrorBarWidth, @isnumeric);
+    addParameter(p, 'ErrorBarCapSize', defaultErrorBarCapSize, @isnumeric);
+
+    % Parse the provided inputs.
+    parse(p, varargin{:});
+
+    % Store the parsed results in local variables.
+    barWidth = p.Results.BarWidth;
+    faceColor = p.Results.FaceColor;
+    edgeColor = p.Results.EdgeColor;
+    orientation = p.Results.Orientation;
+    errBarColor = p.Results.ErrorBarColor;
+    errBarWidth = p.Results.ErrorBarWidth;
+    errBarCapSize = p.Results.ErrorBarCapSize;
+
+    % Preserve the current hold state of the axes.
+    wasHeld = ishold;
+    if ~wasHeld
+        hold on;
+    end
+
+    % yCI must be a matrix with two columns: [lower, upper].
+    if size(yCI, 2) ~= 2
+        error('mybarerr:InvalidCI', ...
+            'yCI must be a matrix with two columns.');
+    end
+    
+    % Ensure y is a column vector for calculations.
+    if isrow(y)
+        y = y';
+    end
+
+    % Calculate positive and negative error lengths from y and yCI.
+    y_neg = y - yCI(:,1);
+    y_pos = yCI(:,2) - y;
+
+    % Plot bars and error bars based on the specified orientation.
+    if strcmpi(orientation, 'vertical')
+        % Plot vertical bars.
+        b = bar(x, y, barWidth, 'EdgeColor', edgeColor);
+
+        % Add vertical error bars.
+        e = errorbar(x, y, y_neg, y_pos, 'LineStyle', 'none');
+    else
+        % Plot horizontal bars.
+        b = barh(x, y, barWidth, 'EdgeColor', edgeColor);
+
+        % Add horizontal error bars.
+        e = errorbar(x, y, y_neg, y_pos, 'horizontal', ...
+            'LineStyle', 'none');
+    end
+
+    % Set error bar properties.
+    e.Color = errBarColor;
+    e.LineWidth = errBarWidth;
+    e.CapSize = errBarCapSize;
+
+    % Apply face color to bars. This handles single or multi-color.
+    isPerBarColor = size(faceColor, 1) == length(y) && ...
+                    size(faceColor, 2) == 3;
+    if isPerBarColor
+        b.FaceColor = 'flat';
+        b.CData = faceColor;
+    else
+        b.FaceColor = faceColor;
+    end
+
+    % Restore the original hold state of the axes.
+    if ~wasHeld
+        hold off;
+    end
+
 end
