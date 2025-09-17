@@ -1,11 +1,13 @@
 %% plot_aggregated_behavior.m
 %
-% Generates a summary figure visualizing the proportion of sessions where
-% experimental factors had a significant effect on behavioral measures.
+% Generates a summary figure for a single brain area, visualizing the
+% proportion of sessions where experimental factors had a significant
+% effect on behavioral measures.
 %
 % INPUTS:
 %   aggregated_data   - A struct containing aggregated behavioral results.
 %   brain_area_name   - A string with the name of the brain area (e.g., 'SC').
+%   analysis_plan     - The analysis plan structure, used to identify factors.
 %
 % Author: Jules
 % Date: 2025-09-17
