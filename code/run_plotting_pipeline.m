@@ -1,15 +1,16 @@
 % run_plotting_pipeline.m
 %
 % Description:
-%   This script serves as the main entry point for generating all final,
-%   aggregated figures for the project. It loads aggregated data and then
-%   calls a series of plotting functions to generate the figures.
+%   This script is the main entry point for generating all final,
+%   aggregated figures. It loads aggregated data, then loops through each
+%   brain area ('SC', 'SNc') to generate a complete set of summary
+%   figures for each population.
 %
 % Author:
 %   Jules
 %
 % Date:
-%   2025-09-12
+%   2025-09-17
 
 % Start timer and provide user feedback
 tic;
@@ -31,19 +32,30 @@ disp('Loading aggregated analysis data...');
 load(aggFileName);
 disp('Data loaded successfully.');
 
-% Call plotting functions
-disp('Generating aggregated ROC comparison plot...');
-plot_aggregated_roc_comparison(aggregated_sc_data, aggregated_snc_data);
+%% Main Plotting Loop
+% This section iterates through each brain area and calls the relevant
+% plotting functions to generate a full set of figures for each area.
+brain_areas = {'SC', 'SNc'};
+all_data = {aggregated_sc_data, aggregated_snc_data};
 
-disp('Generating aggregated ANOVA plot...');
-plot_aggregated_anova(aggregated_sc_data, aggregated_snc_data);
+for i = 1:length(brain_areas)
+    brain_area_name = brain_areas{i};
+    aggregated_data = all_data{i};
 
-disp('Generating aggregated baseline comparison plot...');
-plot_aggregated_baseline_comparison(aggregated_sc_data, aggregated_snc_data);
+    fprintf('Generating plots for %s...\n', brain_area_name);
 
-disp('Generating aggregated behavior plot...');
-plot_aggregated_behavior(aggregated_sc_data, 'SC', analysis_plan);
-plot_aggregated_behavior(aggregated_snc_data, 'SNc', analysis_plan);
+    % Generate aggregated ROC comparison plot
+    plot_aggregated_roc_comparison(aggregated_data, brain_area_name);
+
+    % Generate aggregated ANOVA plot
+    plot_aggregated_anova(aggregated_data, brain_area_name);
+
+    % Generate aggregated baseline comparison plot
+    plot_aggregated_baseline_comparison(aggregated_data, brain_area_name);
+
+    % Generate aggregated behavior plot
+    plot_aggregated_behavior(aggregated_data, brain_area_name, analysis_plan);
+end
 
 % End timer and provide user feedback
 toc;
