@@ -22,6 +22,10 @@ project_root = fileparts(script_dir);
 aggFileName = fullfile(project_root, 'data', 'processed', ...
     'aggregated_analysis_data.mat');
 
+% Load analysis plan, which is needed for some plots.
+disp('Defining analysis plan...');
+analysis_plan = define_task_conditions();
+
 % Load aggregated data
 disp('Loading aggregated analysis data...');
 load(aggFileName);
@@ -36,6 +40,10 @@ plot_aggregated_anova(aggregated_sc_data, aggregated_snc_data);
 
 disp('Generating aggregated baseline comparison plot...');
 plot_aggregated_baseline_comparison(aggregated_sc_data, aggregated_snc_data);
+
+disp('Generating aggregated behavior plot...');
+plot_aggregated_behavior(aggregated_sc_data, 'SC', analysis_plan);
+plot_aggregated_behavior(aggregated_snc_data, 'SNc', analysis_plan);
 
 % End timer and provide user feedback
 toc;
