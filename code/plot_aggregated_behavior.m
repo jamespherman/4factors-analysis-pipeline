@@ -10,7 +10,7 @@
 % Author: Jules
 % Date: 2025-09-17
 %
-function plot_aggregated_behavior(aggregated_data, brain_area_name)
+function plot_aggregated_behavior(aggregated_data, brain_area_name, analysis_plan)
 
 %% Setup Paths
 % Add the 'utils' directory to the path so that helper functions can be
@@ -22,7 +22,10 @@ addpath(fullfile(script_dir, 'utils'));
 behavior_measures = fieldnames(aggregated_data.behavioral_results);
 n_rows = numel(behavior_measures);
 
-factor_names = {'Reward', 'Salience', 'Action', 'Side'};
+% The factors to plot are defined in the analysis plan. We will assume
+% the factors are the same for all behavioral measures and use the first
+% entry in the behavior_plan.
+factor_names = analysis_plan.behavior_plan(1).factors;
 n_cols = numel(factor_names);
 
 if n_rows == 0
@@ -48,16 +51,15 @@ for i_row = 1:n_rows
 
         % --- Data Calculation ---
         % Count total unique sessions for the brain area.
-        total_sessions = numel(unique(results_table.session_uuid));
+        total_sessions = numel(unique(results_table.session_id));
 
-        % Construct the p-value column name (e.g., 'p_Reward')
-        p_value_col = ['p_', factor_name];
+        % Filter for significant results for the current factor.
+        % Find rows where the 'Effect' column matches the factor_name and
+        % pValue is less than 0.05.
+        significant_rows = results_table(strcmp(results_table.Effect, factor_name) & results_table.pValue < 0.05, :);
 
-        % Filter for significant results
-        significant_results = results_table(results_table.(p_value_col) < 0.05, :);
-
-        % Count unique sessions that show a significant effect.
-        num_significant = numel(unique(significant_results.session_uuid));
+        % Count unique sessions that show a significant effect for this factor.
+        num_significant = numel(unique(significant_rows.session_id));
 
         % --- Proportion and Confidence Interval ---
         % Use binofit to get proportion and 95% CI
