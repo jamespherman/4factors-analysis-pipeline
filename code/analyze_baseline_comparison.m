@@ -3,31 +3,82 @@
 % Compares post-event firing rates to a pre-event baseline period for a
 % single specified condition.
 %
+% This function is designed to be a modular component of the 4factors
+% analysis pipeline. It iterates through all available alignment events in
+% core_data and, for a single specified condition, performs a statistical
+% comparison between a pre-event baseline and a post-event window.
+%
+% The specific condition to be analyzed is passed in as a name-value pair.
+%
+% Inputs:
+%   core_data     - A structure containing the core neuronal and behavioral
+%                   data, pre-aligned to various events. See the project's
+%                   data dictionary for more details.
+%
+% Name-Value Pair Inputs:
+%   'condition'   - A char vector specifying the name of the condition to
+%                   analyze (e.g., 'is_reward_high'). This condition must
+%                   exist as a field in core_data.conditions.
+%
+% Outputs:
+%   analysis_results - A structure where each field is an alignment event.
+%                      Each of these fields is a struct whose name is the
+%                      condition that was analyzed. This nested struct
+%                      contains the following fields:
+%                        - sig: A matrix (neurons x time bins) of p-values
+%                          from the statistical comparison.
+%                        - time_vector: The time vector for the bins in 'sig'.
+%
 % Author: Jules
-% Date: 2025-09-14
+% Date: 2025-09-19
 
-function analysis_results = analyze_baseline_comparison(core_data, condition_name)
+function analysis_results = analyze_baseline_comparison(core_data, varargin)
     %% Setup
     % Add the 'utils' directory to the path
     [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
     addpath(fullfile(script_dir, 'utils'));
 
+    % --- Input Parsing ---
+    % Manually parse for 'condition' to accommodate the calling signature
+    % from run_4factors_analysis, which may include other arguments.
+    condition_name = '';
+    for i = 1:2:numel(varargin)
+        if ischar(varargin{i}) && strcmp(varargin{i}, 'condition')
+            condition_name = varargin{i+1};
+            break;
+        end
+    end
+
+    if isempty(condition_name)
+        error('analyze_baseline_comparison:noCondition', ...
+              'The ''condition'' name-value pair is required.');
+    end
+
     % Initialize the output structure
     analysis_results = struct();
 
-    % Get alignment event names from core_data
+    % Get alignment event names dynamically from core_data
     align_events = fieldnames(core_data.aligned_data);
 
     %% Main Analysis Loop
     % Iterate over each alignment event
     for i_event = 1:numel(align_events)
         event_name = align_events{i_event};
+
+        if ~isfield(core_data.aligned_data, event_name)
+            % This check is redundant given the source of align_events,
+            % but it's a safe guard.
+            continue;
+        end
+
         event_data = core_data.aligned_data.(event_name);
 
-        % Define baseline and comparison windows
+        % Define baseline and comparison windows based on event type
         if strcmp(event_name, 'sac_saccadeOn')
+            % For saccades, use a fixed pre-saccadic baseline
             baseline_window = [-0.5, -0.4];
         else
+            % For other events, use the pre-event period
             baseline_window = [event_data.pre_time, 0];
             if event_data.pre_time >= 0
                 baseline_window = [-0.2, 0];
@@ -53,22 +104,22 @@ function analysis_results = analyze_baseline_comparison(core_data, condition_nam
         if isfield(core_data.conditions, condition_name)
             trial_mask = core_data.conditions.(condition_name);
         else
-            warning('Condition not found: %s. Skipping for event %s.', ...
-                    condition_name, event_name);
+            warning('analyze_baseline_comparison:conditionNotFound', ...
+                'Condition ''%s'' not found in core_data.conditions. Skipping for event %s.', ...
+                condition_name, event_name);
             continue;
         end
 
         if sum(trial_mask) < 2
-            continue; % Skip if not enough trials
+            continue; % Skip if not enough trials for comparison
         end
 
-        % Select data based on trial mask
+        % Select data based on the trial mask
         sub_data = event_data.data_array(trial_mask, :, :);
         [n_sel_trials, n_neurons, ~] = size(sub_data);
 
         % Initialize results arrays
         n_comp_bins = sum(comp_idx);
-        roc_vals = NaN(n_neurons, n_comp_bins);
         sig_vals = NaN(n_neurons, n_comp_bins);
 
         % Iterate through each neuron
@@ -94,11 +145,11 @@ function analysis_results = analyze_baseline_comparison(core_data, condition_nam
                     continue;
                 end
                 try
-                    [roc_val, ~, ~, sig_val] = arrayROC(neuron_baseline_data, comp_data_this_bin);
-                    roc_vals(i_neuron, i_bin) = roc_val;
+                    [~, ~, ~, sig_val] = arrayROC(neuron_baseline_data, comp_data_this_bin);
                     sig_vals(i_neuron, i_bin) = sig_val;
                 catch ME
-                    % Could add a warning here if needed
+                    % This can fail if one input has no variance.
+                    % Silently continue, leaving NaN.
                 end
             end
         end
