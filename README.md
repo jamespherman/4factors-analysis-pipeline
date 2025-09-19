@@ -76,7 +76,6 @@ This section provides a brief overview of the key functions in the analysis pipe
 *   **`analyze_baseline_comparison.m`**: Compares post-event firing rates to a pre-event baseline.
 *   **`analyze_roc_comparison.m`**: Performs ROC analysis to compare firing rates between two conditions over time.
 *   **`analyze_anova.m`**: Performs N-way ANOVA on the data.
-*   **`determine_rf_location.m`**: Determines the receptive field (RF) location for neurons.
 *   **`generate_neuron_summary_pdf.m`**: Generates a multi-page PDF with diagnostic plots for each selected neuron.
 
 ### **Utility Functions (`/code/utils/`)**
