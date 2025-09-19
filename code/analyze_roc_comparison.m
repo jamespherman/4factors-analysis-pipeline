@@ -1,17 +1,47 @@
 %% analyze_roc_comparison.m
 %
 % This function performs an ROC analysis to compare neural firing rates
-% between two specified conditions for a single comparison event.
+% between two specified conditions. It is designed to be called with a
+% single comparison struct, passed in via a name-value pair.
+%
+% Inputs:
+%   core_data  - The core data structure containing aligned neural data.
+%   conditions - A struct containing logical masks for various trial
+%                conditions.
+%   varargin   - Name-value pairs. Must include 'comparison', a struct
+%                with fields: event, cond1, cond2, name, and an
+%                optional trial_mask.
+%
+% Output:
+%   analysis_results - A struct containing the ROC analysis results,
+%                      including p-values (sig), a time vector, and the
+%                      names of the conditions that were compared.
 %
 % Author: Jules
-% Date: 2025-09-14
+% Date: 2025-09-19
+%
 
-function analysis_results = analyze_roc_comparison(comparison, core_data, conditions)
+function analysis_results = analyze_roc_comparison(core_data, ...
+    conditions, varargin)
     %% Setup Paths
     % Add the 'utils' directory to the path so that helper functions can be
     % found.
     [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
     addpath(fullfile(script_dir, 'utils'));
+
+    %% Parse Name-Value Pair Inputs
+    comparison = struct();
+    for i = 1:2:length(varargin)
+        if strcmpi(varargin{i}, 'comparison')
+            comparison = varargin{i+1};
+        end
+    end
+
+    % Check if a comparison struct was provided
+    if isempty(fieldnames(comparison))
+        error('analyze_roc_comparison:noComparison', ...
+            'A ''comparison'' struct must be provided via name-value pair.');
+    end
 
     %% Initialize Output
     analysis_results = struct();
@@ -24,7 +54,7 @@ function analysis_results = analyze_roc_comparison(comparison, core_data, condit
 
     % Check if the alignment event exists in the core data
     if ~isfield(core_data.aligned_data, event_name)
-        warning('Event ''%s'' not found in core_data. Skipping comparison ''%s''.', ...
+        warning('Event ''%s'' not found in core_data. Skipping ''%s''.', ...
                 event_name, comp_name);
         return;
     end
@@ -34,7 +64,7 @@ function analysis_results = analyze_roc_comparison(comparison, core_data, condit
 
     %% Get Trial Masks
     if ~isfield(conditions, cond1_name) || ~isfield(conditions, cond2_name)
-        warning('One or both conditions (''%s'', ''%s'') not found. Skipping comparison ''%s''.', ...
+        warning('Conds ''%s'' or ''%s'' not found. Skipping ''%s''.', ...
                 cond1_name, cond2_name, comp_name);
         return;
     end
@@ -49,36 +79,28 @@ function analysis_results = analyze_roc_comparison(comparison, core_data, condit
             cond1_mask = cond1_mask & trial_mask;
             cond2_mask = cond2_mask & trial_mask;
         else
-            warning('Trial mask ''%s'' not found. Skipping comparison ''%s''.', ...
+            warning('Trial mask ''%s'' not found. Skipping ''%s''.', ...
                     comparison.trial_mask, comp_name);
             return;
         end
     end
 
     %% Perform ROC Analysis
-    % Check if there are enough trials in each condition
     if sum(cond1_mask) < 2 || sum(cond2_mask) < 2
-        % Not enough trials to compare, so we can return empty results
         return;
     end
 
-    % Initialize results array
     sig_vals = NaN(n_neurons, n_bins);
 
-    % Loop through each neuron
     for i_neuron = 1:n_neurons
-        % Extract data for the current neuron for both conditions
         neuron_data = squeeze(event_data.data_array(:, i_neuron, :));
-
         cond1_data = neuron_data(cond1_mask, :);
         cond2_data = neuron_data(cond2_mask, :);
 
-        % Compare the two conditions for each time bin
         for i_bin = 1:n_bins
             data1 = cond1_data(:, i_bin);
             data2 = cond2_data(:, i_bin);
 
-            % Ensure there's enough data to compare
             if sum(~isnan(data1)) > 1 && sum(~isnan(data2)) > 1
                 try
                     [~, ~, ~, sig] = arrayROC(data1, data2);
@@ -91,8 +113,8 @@ function analysis_results = analyze_roc_comparison(comparison, core_data, condit
     end
 
     %% Store Results
-    analysis_results.(event_name).(comp_name).sig = sig_vals;
-    analysis_results.(event_name).(comp_name).time_vector = event_data.time_vector;
-    analysis_results.(event_name).(comp_name).cond_names = {cond1_name, cond2_name};
+    analysis_results.sig = sig_vals;
+    analysis_results.time_vector = event_data.time_vector;
+    analysis_results.cond_names = {cond1_name, cond2_name};
 
 end
