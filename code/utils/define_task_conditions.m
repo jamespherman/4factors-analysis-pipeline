@@ -5,8 +5,9 @@ function [conditions, condition_defs] = define_task_conditions(varargin)
 % 1.  When called without arguments, it returns a comprehensive analysis
 %     plan in the `condition_defs` struct. This plan is the single source
 %     of truth for all analyses run in the main pipeline.
-% 2.  When called with session data, it calculates and returns a struct of
-%     logical masks for various trial conditions based on the session's data.
+% 2.  When called with session data, it determines the recorded hemisphere
+%     based on manifest data and calculates a struct of logical masks for
+%     various spatial and trial-based conditions.
 %
 % OUTPUTS:
 %   conditions:     A struct of logical masks for trial conditions, specific
@@ -38,7 +39,7 @@ condition_defs.condition_masks.reward = {'is_high_reward', 'is_low_reward'};
 condition_defs.condition_masks.salience = {'is_high_salience', 'is_low_salience'};
 condition_defs.condition_masks.identity = {'is_face_target', 'is_nonface_target'};
 condition_defs.condition_masks.probability = {'is_high_probability', 'is_low_probability'};
-condition_defs.condition_masks.rf_location = {'is_in_rf', 'is_out_of_rf'};
+condition_defs.condition_masks.spatial = {'is_contralateral_target', 'is_ipsilateral_target', 'is_opposite_rf'};
 
 % C. Baseline Comparison Plan
 % Each element defines a "Baseline vs. Post-Event Activity" analysis.
@@ -56,10 +57,10 @@ end
 % D. ROC Analysis Plan
 % Each element defines a bin-by-bin ROC comparison.
 roc_plan_def = { ...
-    'reward',      'targetOn', condition_defs.condition_masks.reward{1},      condition_defs.condition_masks.reward{2},      'is_in_rf'; ...
-    'salience',    'targetOn', condition_defs.condition_masks.salience{1},    condition_defs.condition_masks.salience{2},    'is_in_rf'; ...
-    'identity',    'targetOn', condition_defs.condition_masks.identity{1},    condition_defs.condition_masks.identity{2},    'is_in_rf'; ...
-    'probability', 'targetOn', condition_defs.condition_masks.probability{1}, condition_defs.condition_masks.probability{2}, 'is_in_rf'  ...
+    'reward',      'targetOn', condition_defs.condition_masks.reward{1},      condition_defs.condition_masks.reward{2},      'is_contralateral_target'; ...
+    'salience',    'targetOn', condition_defs.condition_masks.salience{1},    condition_defs.condition_masks.salience{2},    'is_contralateral_target'; ...
+    'identity',    'targetOn', condition_defs.condition_masks.identity{1},    condition_defs.condition_masks.identity{2},    'is_contralateral_target'; ...
+    'probability', 'targetOn', condition_defs.condition_masks.probability{1}, condition_defs.condition_masks.probability{2}, 'is_contralateral_target'  ...
 };
 condition_defs.roc_plan = struct('name', {}, 'event', {}, 'cond1', {}, 'cond2', {}, 'trial_mask', {});
 for i = 1:size(roc_plan_def, 1)
@@ -73,11 +74,11 @@ end
 % E. Per-Neuron Diagnostic Plots
 diag_plots(1).event = 'targetOn';
 diag_plots(1).title = 'Target On';
-diag_plots(1).conditions_to_compare = {'is_in_rf', 'is_out_of_rf'};
+diag_plots(1).conditions_to_compare = {'is_contralateral_target', 'is_ipsilateral_target'};
 
 diag_plots(2).event = 'saccadeOnset';
 diag_plots(2).title = 'Saccade Onset';
-diag_plots(2).conditions_to_compare = {'is_in_rf', 'is_out_of_rf'};
+diag_plots(2).conditions_to_compare = {'is_contralateral_target', 'is_ipsilateral_target'};
 
 condition_defs.diagnostic_plots = diag_plots;
 
@@ -85,7 +86,7 @@ condition_defs.diagnostic_plots = diag_plots;
 condition_defs.anova_plan.run = true;
 condition_defs.anova_plan.event = 'targetOn';
 condition_defs.anova_plan.factors = {'reward', 'salience', 'identity', 'probability'};
-condition_defs.anova_plan.trial_mask = 'is_in_rf';
+condition_defs.anova_plan.trial_mask = 'is_contralateral_target';
 
 % G. Behavioral Analysis Plan
 % Each element defines a behavioral analysis to be run.
@@ -93,19 +94,19 @@ condition_defs.behavior_plan(1).name = 'ReactionTime';
 condition_defs.behavior_plan(1).dependent_variable = ...
     {'eventTimes.pdsSaccadeOn', '-', 'eventTimes.pdsFixOff'};
 condition_defs.behavior_plan(1).factors = {'reward', 'salience', 'identity', 'probability'};
-condition_defs.behavior_plan(1).trial_mask = 'is_in_rf';
+condition_defs.behavior_plan(1).trial_mask = 'is_contralateral_target';
 
 condition_defs.behavior_plan(2).name = 'PeakVelocity';
 condition_defs.behavior_plan(2).dependent_variable = {'trialInfo.peakVel'};
 condition_defs.behavior_plan(2).factors = {'reward', 'salience', 'identity', 'probability'};
-condition_defs.behavior_plan(2).trial_mask = 'is_in_rf';
+condition_defs.behavior_plan(2).trial_mask = 'is_contralateral_target';
 
 condition_defs.behavior_plan(3).name = 'EndpointError';
 % 'endpoint_error' is a special keyword that will be calculated by
 % the analysis function from postSacXY and target location.
 condition_defs.behavior_plan(3).dependent_variable = {'endpoint_error'};
 condition_defs.behavior_plan(3).factors = {'reward', 'salience', 'identity', 'probability'};
-condition_defs.behavior_plan(3).trial_mask = 'is_in_rf';
+condition_defs.behavior_plan(3).trial_mask = 'is_contralateral_target';
 
 % H. Population Decoding Plan
 % This plan is now a two-stage process. First, a set of classifiers are
@@ -118,7 +119,7 @@ training_plan = struct('model_tag', {}, 'align_event', {}, ...
                        'time_window', {}, 'cond1', {}, 'cond2', {}, ...
                        'trial_mask', {});
 
-factors = {'reward', 'salience', 'identity', 'probability', 'rf_location'};
+factors = {'reward', 'salience', 'identity', 'probability', 'spatial'};
 epoch_defs = struct(...
     'Visual', struct('event', 'targetOn', 'window', [0.05, 0.25]), ...
     'Delay',  struct('event', 'fixOff', 'window', [-0.15, 0.05]), ...
@@ -136,8 +137,8 @@ for i = 1:length(factors)
         entry = struct();
         % Capitalize first letter for tag
         tag_factor_name = [upper(factor_name(1)), factor_name(2:end)];
-        if strcmp(factor_name, 'rf_location')
-            tag_factor_name = 'RF_Location';
+        if strcmp(factor_name, 'spatial')
+            tag_factor_name = 'Spatial';
         end
         entry.model_tag = sprintf('%s_%s', tag_factor_name, epoch_name);
         entry.align_event = epoch_details.event;
@@ -146,9 +147,9 @@ for i = 1:length(factors)
         entry.cond2 = conds{2};
 
         if strcmp(factor_name, 'identity')
-            entry.trial_mask = {'is_in_rf', 'is_image_target'};
+            entry.trial_mask = {'is_contralateral_target', 'is_image_target'};
         else
-            entry.trial_mask = 'is_in_rf';
+            entry.trial_mask = 'is_contralateral_target';
         end
         training_plan(end+1) = entry;
     end
@@ -196,9 +197,9 @@ for i = 1:length(cross_factors)
 
             if strcmp(train_factor, 'Identity') || ...
                strcmp(test_factor, 'Identity')
-                entry.trial_mask = {'is_in_rf', 'is_image_target'};
+                entry.trial_mask = {'is_contralateral_target', 'is_image_target'};
             else
-                entry.trial_mask = 'is_in_rf';
+                entry.trial_mask = 'is_contralateral_target';
             end
 
             testing_plan(end+1) = entry;
@@ -227,9 +228,9 @@ for i = 1:length(main_factors)
     entry.time_window = [];
 
     if strcmp(factor, 'Identity')
-        entry.trial_mask = {'is_in_rf', 'is_image_target'};
+        entry.trial_mask = {'is_contralateral_target', 'is_image_target'};
     else
-        entry.trial_mask = 'is_in_rf';
+        entry.trial_mask = 'is_contralateral_target';
     end
     testing_plan(end+1) = entry;
 
@@ -248,9 +249,9 @@ for i = 1:length(main_factors)
     entry.time_window = [];
 
     if strcmp(factor, 'Identity')
-        entry.trial_mask = {'is_in_rf', 'is_image_target'};
+        entry.trial_mask = {'is_contralateral_target', 'is_image_target'};
     else
-        entry.trial_mask = 'is_in_rf';
+        entry.trial_mask = 'is_contralateral_target';
     end
     testing_plan(end+1) = entry;
 end
@@ -304,13 +305,55 @@ isSuccessful = ~cellfun(@isempty, eventTimes.rewardCell);
 % The master mask: valid, completed trials from the correct task
 masterMask = isGSac4factors & isSuccessful;
 
-% --- Receptive Field (RF) Conditions ---
-% Get the index of the target location inside the SC receptive field
-rfLocationIdx = determine_rf_location(sessionData);
+% --- Spatial Conditions from Ground Truth ---
+% Determine recorded hemisphere from manifest grid coordinates
+grid_x = sessionData.metadata.grid_x;
+if grid_x < 0
+    scSide = 'left';
+    % Left SC -> Contralateral is Right Visual Field (theta > 0)
+    contra_thetas = trialInfo.targetTheta > 0;
+elseif grid_x > 0
+    scSide = 'right';
+    % Right SC -> Contralateral is Left Visual Field (theta < 0)
+    contra_thetas = trialInfo.targetTheta < 0;
+else
+    % Default to right visual field if grid_x is 0 or missing
+    scSide = 'unknown';
+    contra_thetas = trialInfo.targetTheta > 0;
+    warning('grid_x is 0 or missing; defaulting contralateral to right visual field.');
+end
 
-% Create logical masks based on the trial-by-trial target location
-isInRf = (trialInfo.pdsTargLocIdx == rfLocationIdx);
-isOutOfRf = ~isInRf;
+isContralateral = contra_thetas;
+isIpsilateral = ~contra_thetas;
+
+% --- Opposite RF Mask ---
+% Find the most frequent target location in the contralateral hemifield
+validContraTrials = masterMask & isContralateral;
+contraLocations = trialInfo.pdsTargLocIdx(validContraTrials);
+
+if ~isempty(contraLocations)
+    primaryContraLocation = mode(contraLocations);
+
+    % Determine the location opposite to the primary one
+    switch primaryContraLocation
+        case 1
+            oppositeLocation = 3;
+        case 3
+            oppositeLocation = 1;
+        case 2
+            oppositeLocation = 4;
+        case 4
+            oppositeLocation = 2;
+        otherwise
+            oppositeLocation = NaN; % Should not happen
+    end
+
+    % Create the mask for trials at the opposite location
+    isOppositeRf = (trialInfo.pdsTargLocIdx == oppositeLocation);
+else
+    % If no contralateral trials, the mask is all false
+    isOppositeRf = false(size(trialInfo.pdsTargLocIdx));
+end
 
 % --- The Four Factors ---
 % 1. Reward
@@ -347,8 +390,9 @@ isLowProbability = ismember(trialInfo.pdsTargLocIdx, lowProbLocs);
 % Filter all logical masks by the masterMask and store in the output.
 % This ensures all output fields have the same length, corresponding
 % to the number of valid trials.
-conditions.is_in_rf = isInRf(masterMask);
-conditions.is_out_of_rf = isOutOfRf(masterMask);
+conditions.is_contralateral_target = isContralateral(masterMask);
+conditions.is_ipsilateral_target = isIpsilateral(masterMask);
+conditions.is_opposite_rf = isOppositeRf(masterMask);
 
 conditions.is_high_reward = isHighReward(masterMask);
 conditions.is_low_reward = isLowReward(masterMask);
