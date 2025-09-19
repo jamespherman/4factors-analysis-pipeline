@@ -44,7 +44,7 @@ giveFeed('Manifest loaded.');
 giveFeed('Loading analysis plan...');
 % The single source of truth for the analysis plan is now
 % define_task_conditions. We call it without arguments to get the plan.
-analysis_plan = define_task_conditions();
+[~, analysis_plan] = define_task_conditions();
 giveFeed('Analysis plan loaded.');
 
 %% Iterate Through Sessions
@@ -294,7 +294,7 @@ for i = 1:height(manifest)
 
         % --- Integration of Analysis Plan for Data Prep ---
         % Call define_task_conditions without arguments to get the plan.
-    analysis_plan_for_prep = define_task_conditions();
+        [~, analysis_plan_for_prep] = define_task_conditions();
 
         % Dynamically generate the list of required alignment events from the plan.
         all_events_prep = {};
@@ -348,8 +348,8 @@ for i = 1:height(manifest)
                     n_total_steps, comp_name);
                 giveFeed(sprintf('--> Running Baseline Comparison: %s', comp_name));
 
-                result_by_event = analyze_baseline_comparison(core_data, ...
-                    conditions, 'condition', comp_name);
+                result_by_event = analyze_baseline_comparison(...
+                    core_data, conditions, 'condition', comp_name);
 
                 event_names = fieldnames(result_by_event);
                 for k = 1:length(event_names)

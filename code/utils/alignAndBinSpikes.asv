@@ -44,12 +44,18 @@ if step_size == -1
     step_size = binWidth;
 end
 
-% --- Bin Definition ---
-bin_starts  = minTime:step_size:(maxTime - binWidth);
-bin_ends    = bin_starts + binWidth;
-bin_centers  = mean([bin_starts; bin_ends]);
+% --- Unified Bin Definition ---
+bin_starts = minTime:step_size:(maxTime - binWidth);
+bin_centers = bin_starts + binWidth / 2;
 nBins = length(bin_starts);
 nEventTimes = length(eventTimes);
+
+% Define bin edges for histcounts
+if isempty(bin_starts)
+    bin_edges = [];
+else
+    bin_edges = [bin_starts, bin_starts(end) + binWidth];
+end
 
 % --- Unified Spike Counting ---
 binned_counts = zeros(nEventTimes, nBins);
@@ -59,15 +65,13 @@ for i = 1:nEventTimes
     % Align spikes to the current event time
     event_window = spikeTimes > eventTimes(i) + minTime & ...
         spikeTimes < eventTimes(i) + maxTime;
-
-    % store aligned spikes
-    aligned_spikes_cell{i} = spikeTimes(event_window) - eventTimes(i);
+    current_aligned_spikes = spikeTimes(event_window) - eventTimes(i);
     
-    % count and store binned counts
-    for j = 1:nBins
-        binned_counts(i, j) = ...
-            nnz(aligned_spikes_cell{i} > bin_starts(j) & ...
-            aligned_spikes_cell{i} < bin_ends(j));
+    aligned_spikes_cell{i} = current_aligned_spikes;
+    
+    % Bin the aligned spikes
+    if ~isempty(current_aligned_spikes) && ~isempty(bin_edges)
+        binned_counts(i, :) = histcounts(current_aligned_spikes, bin_edges);
     end
 end
 

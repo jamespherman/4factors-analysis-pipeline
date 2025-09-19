@@ -95,7 +95,7 @@ if has_gSac_jph_trials
 end
 
 % Identify valid 4factors task trials:
-fourfactors_task_code = codes.uniqueTaskCode_4factors;
+fourfactors_task_code = codes.uniqueTaskCode_gSac_4factors;
 fourfactors_trials = session_data.trialInfo.taskCode == ...
     fourfactors_task_code & ~cellfun(@isempty, ...
     session_data.eventTimes.rewardCell);
