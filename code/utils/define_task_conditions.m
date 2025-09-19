@@ -320,8 +320,24 @@ isSuccessful = ~cellfun(@isempty, eventTimes.rewardCell);
 masterMask = isGSac4factors & isSuccessful;
 
 % --- Spatial Conditions from Ground Truth ---
-% Determine recorded hemisphere from manifest grid coordinates
-grid_x = sessionData.metadata.grid_x;
+% Determine recorded hemisphere by parsing the 'grid_hole' string
+% from the session manifest. This provides the ground truth for the
+% recording location.
+grid_hole_str = sessionData.metadata.grid_hole;
+
+% Robustly parse the (X, Y) coordinates from the string. The sscanf
+% function is used here to extract the first floating-point number,
+% which corresponds to the X-coordinate. It is designed to handle
+% variations in spacing and the presence of parentheses and commas.
+coords = sscanf(grid_hole_str, '(%f, %f)');
+if ~isempty(coords)
+    grid_x = coords(1);
+else
+    grid_x = 0; % Default if parsing fails
+    warning('Could not parse grid_hole string: "%s". Defaulting grid_x to 0.', ...
+        grid_hole_str);
+end
+
 if grid_x < 0
     scSide = 'left';
     % Left SC -> Contralateral is Right Visual Field (theta > 0)
@@ -331,11 +347,11 @@ elseif grid_x > 0
     % Right SC -> Contralateral is Left Visual Field (theta < 0)
     contra_thetas = trialInfo.targetTheta < 0;
 else
-    % Default to right visual field if grid_x is 0 or missing
+    % Default to right visual field if grid_x is 0 or ambiguous
     scSide = 'unknown';
     contra_thetas = trialInfo.targetTheta > 0;
-    warning(['grid_x is 0 or missing; defaulting contralateral ' ...
-        'to right visual field.']);
+    warning(['grid_x is 0 or could not be determined; defaulting ' ...
+        'contralateral to right visual field.']);
 end
 isContralateral = contra_thetas;
 isIpsilateral = ~contra_thetas;
