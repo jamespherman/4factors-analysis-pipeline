@@ -360,7 +360,7 @@ isIpsilateral = ~contra_thetas;
 % Find the most frequent target location in the contralateral
 % hemifield
 validContraTrials = masterMask & isContralateral;
-contraLocations = trialInfo.pdsTargLocIdx(validContraTrials);
+contraLocations = trialInfo.targetLocIdx(validContraTrials);
 if ~isempty(contraLocations)
     primaryContraLocation = mode(contraLocations);
     % Determine the location opposite to the primary one
@@ -377,10 +377,10 @@ if ~isempty(contraLocations)
             oppositeLocation = NaN; % Should not happen
     end
     % Create the mask for trials at the opposite location
-    isOppositeRf = (trialInfo.pdsTargLocIdx == oppositeLocation);
+    isOppositeRf = (trialInfo.targetLocIdx == oppositeLocation);
 else
     % If no contralateral trials, the mask is all false
-    isOppositeRf = false(size(trialInfo.pdsTargLocIdx));
+    isOppositeRf = false(size(trialInfo.targetLocIdx));
 end
 
 % --- The Four Factors ---
@@ -399,7 +399,7 @@ is_image_target = isFaceTarget | isNonfaceTarget;
 
 % 4. Spatial Probability (Data-Driven)
 % Get target locations for all valid gSac_4factors trials
-validTrialLocs = trialInfo.pdsTargLocIdx(masterMask);
+validTrialLocs = trialInfo.targetLocIdx(masterMask);
 % Calculate frequency for each unique target location
 [uniqueLocs, ~, locIndices] = unique(validTrialLocs);
 locCounts = accumarray(locIndices, 1);
@@ -408,8 +408,8 @@ medianFreq = median(locCounts);
 highProbLocs = uniqueLocs(locCounts > medianFreq);
 lowProbLocs = uniqueLocs(locCounts < medianFreq);
 % Create masks based on whether trial's target is in a high/low prob
-isHighProbability = ismember(trialInfo.pdsTargLocIdx, highProbLocs);
-isLowProbability = ismember(trialInfo.pdsTargLocIdx, lowProbLocs);
+isHighProbability = ismember(trialInfo.targetLocIdx, highProbLocs);
+isLowProbability = ismember(trialInfo.targetLocIdx, lowProbLocs);
 
 % --- Output Structure ---
 % Filter all logical masks by the masterMask and store in the output.
