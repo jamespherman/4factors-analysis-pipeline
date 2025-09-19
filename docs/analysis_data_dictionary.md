@@ -13,8 +13,9 @@ All masks within this struct are the same length and have been pre-filtered to i
 
 ### Fields
 
--   `.is_in_rf`: `logical` - `true` for trials where the target was presented inside the neuron's receptive field (RF).
--   `.is_out_of_rf`: `logical` - `true` for trials where the target was presented outside the RF.
+-   `.is_contralateral_target`: `logical` - `true` for trials where the target was presented in the visual field contralateral to the recorded SC hemisphere.
+-   `.is_ipsilateral_target`: `logical` - `true` for trials where the target was presented in the visual field ipsilateral to the recorded SC hemisphere.
+-   `.is_opposite_rf`: `logical` - `true` for trials where the target was presented in the location directly opposite the contralateral RF (e.g., location 3 if RF is at location 1).
 -   `.is_high_reward`: `logical` - `true` for trials with a high reward outcome.
 -   `.is_low_reward`: `logical` - `true` for trials with a low reward outcome.
 -   `.is_high_salience`: `logical` - `true` for trials where the target was of high visual salience.
