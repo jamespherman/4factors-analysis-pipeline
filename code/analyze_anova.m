@@ -1,127 +1,134 @@
 %% analyze_anova.m
 %
-% Performs an N-way ANOVA on neuronal firing rates based on a provided
-% analysis plan. This function is designed to be dynamically controlled by
-% the settings in the `anova_plan` struct.
+% Performs an N-way ANOVA on neuronal firing rates. This function is
+% dynamically driven by the `anova_plan` struct, which specifies the
+% alignment event, factors, and trials to include.
+%
+% Inputs:
+%   session_data - The main data struct for the session, which will be
+%                  updated with the analysis results.
+%   core_data    - The core data structure containing aligned neural data.
+%   conditions   - A struct with logical masks for trial conditions.
+%   anova_plan   - A struct defining the ANOVA to be run. It must contain:
+%                  .event: The name of the alignment event (e.g., 'CUE_ON').
+%                  .trial_mask: The name of the condition mask to select
+%                               trials for the analysis.
+%                  .factors: A nested cell array defining the factors. Each
+%                            inner cell array should contain the full names
+%                            of the condition masks that represent the
+%                            levels of a single factor.
+%                            Example: {{'cond_A1', 'cond_A2'}, {'cond_B1', 'cond_B2'}}
+%
+% Output:
+%   session_data - The input session_data struct, with the ANOVA results
+%                  added under the `analysis.anova_results.(event_name)` field.
 %
 % Author: Jules
-% Date: 2025-09-14
+% Date: 2025-09-19
 %
 
-function session_data = analyze_anova(session_data, core_data, conditions, anova_plan)
+function session_data = analyze_anova(session_data, core_data, ...
+    conditions, anova_plan)
 
-%% Setup Paths
-[script_dir, ~, ~] = fileparts(mfilename('fullpath'));
-addpath(fullfile(script_dir, 'utils'));
+    %% Setup Paths
+    [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
+    addpath(fullfile(script_dir, 'utils'));
 
-%% Unpack ANOVA Parameters
-event_name = anova_plan.event;
-factors = anova_plan.factors;
-trial_mask_name = anova_plan.trial_mask;
+    %% Unpack ANOVA Parameters
+    event_name = anova_plan.event;
+    factors = anova_plan.factors;
+    trial_mask_name = anova_plan.trial_mask;
 
-% Initialize results structure
-session_data.analysis.anova_results = struct();
+    %% Initialize Results Structure
+    if ~isfield(session_data, 'analysis')
+        session_data.analysis = struct();
+    end
+    session_data.analysis.anova_results.(event_name) = struct();
 
-%% Prepare Data for ANOVA
-% Extract data for the specified alignment event
-if ~isfield(core_data, event_name)
-    warning('analyze_anova:eventNotFound', ...
-        'Event ''%s'' not found in core_data. Skipping ANOVA.', ...
-        event_name);
-    return;
-end
-event_data = core_data.(event_name);
-[~, ~, ~] = size(event_data.binned_spikes);
-
-% Calculate mean firing rate in the post-event window
-time_vector = event_data.time_vector;
-post_event_bins = time_vector >= 0;
-mean_fr = mean(event_data.binned_spikes(:, :, post_event_bins), 3, 'omitnan');
-
-% Apply the trial mask to select trials for the ANOVA
-if ~isfield(conditions, trial_mask_name)
-    warning('analyze_anova:maskNotFound', ...
-        'Trial mask ''%s'' not found in conditions. Skipping ANOVA.', ...
-        trial_mask_name);
-    return;
-end
-trial_mask = conditions.(trial_mask_name);
-
-% Filter the firing rates by the trial mask
-filtered_fr = mean_fr(trial_mask, :);
-
-%% Prepare Grouping Variables and Run ANOVA
-% Create grouping variables for the ANOVA
-group_vars = cell(1, length(factors));
-for i = 1:length(factors)
-    factor_name = factors{i};
-
-    % Define the condition names based on the factor name
-    high_cond_name = ['is_high_' factor_name];
-    low_cond_name = ['is_low_' factor_name];
-
-    % Check if the conditions exist
-    if ~isfield(conditions, high_cond_name) || ~isfield(conditions, low_cond_name)
-        warning('analyze_anova:conditionNotFound', ...
-            'Condition for factor ''%s'' not found. Skipping ANOVA.', ...
-            factor_name);
+    %% Prepare Data for ANOVA
+    if ~isfield(core_data.aligned_data, event_name)
+        warning('analyze_anova:eventNotFound', ...
+            'Event ''%s'' not found in core_data. Skipping ANOVA.', ...
+            event_name);
         return;
     end
+    event_data = core_data.aligned_data.(event_name);
+    time_vector = event_data.time_vector;
 
-    % Get the condition masks and filter them by the trial_mask
-    high_mask = conditions.(high_cond_name)(trial_mask);
-    low_mask = conditions.(low_cond_name)(trial_mask);
+    % Calculate mean firing rate in the post-event window (t >= 0)
+    post_event_bins = time_vector >= 0;
+    mean_fr = mean(event_data.data_array(:, :, post_event_bins), 3, 'omitnan');
 
-    % Create the grouping variable
-    group_var = cell(length(high_mask), 1);
-    group_var(high_mask) = {'high'};
-    group_var(low_mask) = {'low'};
-    group_vars{i} = group_var;
-end
+    % Get the trial mask to select trials for the ANOVA
+    if ~isfield(conditions, trial_mask_name)
+        warning('analyze_anova:maskNotFound', ...
+            'Trial mask ''%s'' not found in conditions. Skipping ANOVA.', ...
+            trial_mask_name);
+        return;
+    end
+    trial_mask = conditions.(trial_mask_name);
+    filtered_fr = mean_fr(trial_mask, :);
 
-% Run ANOVA for each neuron
-n_neurons = size(filtered_fr, 2);
-p_values = cell(1, n_neurons);
-term_names = {};
-term_names_collected = false;
+    %% Prepare Grouping Variables and Run ANOVA
+    group_vars = cell(1, length(factors));
+    factor_names = cell(1, length(factors));
 
-for i_neuron = 1:n_neurons
-    y = filtered_fr(:, i_neuron);
+    for i = 1:length(factors)
+        factor_levels = factors{i};
+        % Dynamically derive a factor name (e.g., 'cond_A1' -> 'condA')
+        clean_name = strrep(factor_levels{1}, '_', '');
+        factor_names{i} = matlab.lang.makeValidName(clean_name(1:end-1));
 
-    % Skip if there are not enough data points
-    if sum(~isnan(y)) < length(y) * 0.5 || length(y) < 2
-        continue;
+        group_var = cell(sum(trial_mask), 1);
+        for j = 1:length(factor_levels)
+            level_name = factor_levels{j};
+            if ~isfield(conditions, level_name)
+                warning('analyze_anova:levelNotFound', ...
+                    'Condition ''%s'' not found. Skipping ANOVA.', level_name);
+                return;
+            end
+            level_mask = conditions.(level_name)(trial_mask);
+            group_var(level_mask) = {level_name};
+        end
+        group_vars{i} = group_var;
     end
 
-    [p, tbl, ~, ~] = anovan(y, group_vars, 'model', 'interaction', ...
-        'varnames', factors, 'display', 'off');
+    n_neurons = size(filtered_fr, 2);
+    p_values = cell(1, n_neurons);
+    term_names_collected = false;
+    tbl_term_names = {};
 
-    p_values{i_neuron} = p;
-
-    if ~term_names_collected && ~isempty(tbl)
-        term_names = tbl(2:(end-2), 1); % Get term names from the table
-        term_names_collected = true;
-    end
-end
-
-%% Store Results
-if term_names_collected
-    % Initialize fields in the results struct
-    for i_term = 1:length(term_names)
-        field_name = matlab.lang.makeValidName(term_names{i_term});
-        session_data.analysis.anova_results.(field_name) = NaN(1, n_neurons);
-    end
-
-    % Populate the results struct with p-values
     for i_neuron = 1:n_neurons
-        if ~isempty(p_values{i_neuron})
-            for i_term = 1:length(term_names)
-                field_name = matlab.lang.makeValidName(term_names{i_term});
-                p_val = p_values{i_neuron}(i_term);
-                session_data.analysis.anova_results.(field_name)(i_neuron) = p_val;
+        y = filtered_fr(:, i_neuron);
+        if sum(~isnan(y)) < length(y) * 0.5 || isempty(y)
+            continue;
+        end
+
+        [p, tbl, ~, ~] = anovan(y, group_vars, 'model', 'interaction', ...
+            'varnames', factor_names, 'display', 'off');
+        p_values{i_neuron} = p;
+
+        if ~term_names_collected && !isempty(tbl)
+            tbl_term_names = tbl(2:(end-2), 1);
+            term_names_collected = true;
+        end
+    end
+
+    %% Store Results
+    if term_names_collected
+        for i_term = 1:length(tbl_term_names)
+            field_name = matlab.lang.makeValidName(tbl_term_names{i_term});
+            session_data.analysis.anova_results.(event_name).(field_name) = NaN(1, n_neurons);
+        end
+
+        for i_neuron = 1:n_neurons
+            if ~isempty(p_values{i_neuron})
+                for i_term = 1:length(tbl_term_names)
+                    field_name = matlab.lang.makeValidName(tbl_term_names{i_term});
+                    p_val = p_values{i_neuron}(i_term);
+                    session_data.analysis.anova_results.(event_name).(field_name)(i_neuron) = p_val;
+                end
             end
         end
     end
-end
-
 end
