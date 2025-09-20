@@ -4,20 +4,20 @@
 %   neurons across multiple specified behavioral events.
 %
 % INPUTS:
-%   session_data         - The main data structure.
-%   selected_neurons     - A logical vector for neuron selection.
-%   tokens_trial_indices - Indices for trials of the 'tokens' task.
-%   alignment_events     - Cell array of event names to align to.
+%   session_data     - The main data structure.
+%   selected_neurons - A logical vector for neuron selection.
+%   trial_indices    - Indices for trials to be included in the analysis.
+%   alignment_events - Cell array of event names to align to.
 %
 % OUTPUT:
-%   aligned_spikes       - A struct with aligned spike data, with fields
-%                          for each alignment event.
+%   aligned_spikes   - A struct with aligned spike data, with fields
+%                      for each alignment event.
 %
 % Author: Jules
 % Date: 2025-09-08
 
 function aligned_spikes = prepare_neuronal_data(session_data, ...
-    selected_neurons, tokens_trial_indices, alignment_events)
+    selected_neurons, trial_indices, alignment_events)
 
 %% Define Alignment Parameters
 bin_width = 0.2; % 200ms bin size
@@ -26,7 +26,7 @@ step_size = 0.1; % 100ms step size
 % Get basic info
 neuron_cluster_ids = find(selected_neurons);
 n_selected_neurons = numel(neuron_cluster_ids);
-n_tokens_trials = numel(tokens_trial_indices);
+n_trials = numel(trial_indices);
 
 %% Process Each Alignment Event
 for i_event = 1:numel(alignment_events)
@@ -51,14 +51,14 @@ for i_event = 1:numel(alignment_events)
     % Note: For 'reward', this aligns to the *first* reward pulse
     if strcmp(event_name, 'reward')
         event_times = cellfun(@(c) c(1), ...
-            session_data.eventTimes.rewardCell(tokens_trial_indices));
+            session_data.eventTimes.rewardCell(trial_indices));
     else
         event_times = session_data.eventTimes.(event_name)( ...
-            tokens_trial_indices);
+            trial_indices);
     end
 
     % Initialize storage for binned firing rates
-    binned_rates = nan(n_selected_neurons, n_tokens_trials, n_time_bins);
+    binned_rates = nan(n_selected_neurons, n_trials, n_time_bins);
 
     % Loop through each selected neuron to bin their spike times
     for i_neuron = 1:n_selected_neurons
@@ -94,7 +94,7 @@ for i_event = 1:numel(alignment_events)
         % Get the time of the last reward pulse for each trial
         % 'UniformOutput' is false to handle trials with no rewards
         last_reward_times_abs = cellfun(@(c) c(end), ...
-            session_data.eventTimes.rewardCell(tokens_trial_indices), ...
+            session_data.eventTimes.rewardCell(trial_indices), ...
             'UniformOutput', false);
 
         % Replace empty values with NaN and convert to a numeric array
@@ -103,7 +103,7 @@ for i_event = 1:numel(alignment_events)
         last_reward_times_abs = cell2mat(last_reward_times_abs);
 
         % Loop through each trial to apply NaN padding post-alignment
-        for i_trial = 1:n_tokens_trials
+        for i_trial = 1:n_trials
             if isnan(event_times(i_trial)) || ...
                     isnan(last_reward_times_abs(i_trial))
                 continue;

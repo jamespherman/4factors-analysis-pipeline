@@ -24,10 +24,12 @@
 %                   exist as a field in the 'conditions' struct.
 %
 % Outputs:
-%   analysis_results - A structure where each field corresponds to an
-%                      alignment event. Each of these fields is a struct
-%                      whose name is the condition that was analyzed. This
-%                      nested struct contains the following fields:
+%   analysis_results - A nested structure containing the analysis results.
+%                      The structure has the following hierarchy:
+%                      analysis_results.EVENT_NAME.CONDITION_NAME.FIELD
+%                      - EVENT_NAME: A field for each alignment event processed.
+%                      - CONDITION_NAME: The name of the condition analyzed.
+%                      - FIELD:
 %                        - sig: A matrix (neurons x time bins) of p-values
 %                          from the statistical comparison.
 %                        - time_vector: The time vector for the bins in 'sig'.

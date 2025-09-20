@@ -237,10 +237,10 @@ for i = 1:height(manifest)
 
         session_data.metadata.unique_id = session_id;
         if strcmp(session_data.metadata.brain_area, 'SNc')
-            selected_neurons = screen_da_neurons(session_data, session_id);
+            selected_neurons = screen_da_neurons(session_data, session_id, project_root);
         elseif strcmp(session_data.metadata.brain_area, 'SC')
             [selected_neurons, sig_epoch_comp, scSide] = ...
-                screen_sc_neurons(session_data);
+                screen_sc_neurons(session_data, project_root);
             session_data.analysis.scSide = scSide;
             session_data.analysis.sig_epoch_comparison = sig_epoch_comp;
         else
@@ -355,7 +355,7 @@ for i = 1:height(manifest)
                 for k = 1:length(event_names)
                     event_name = event_names{k};
                     session_data.analysis.baseline_comparison.(event_name).(comp_name) = ...
-                        result_by_event.(event_name);
+                        result_by_event.(event_name).(comp_name);
                 end
                 data_updated = true;
             end

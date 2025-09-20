@@ -1,4 +1,4 @@
-function [selected_neurons, sig_epoch_comparison, scSide] = screen_sc_neurons(session_data)
+function [selected_neurons, sig_epoch_comparison, scSide] = screen_sc_neurons(session_data, project_root)
 % screen_sc_neurons - Implements an inclusive, multi-group method to identify
 % task-modulated SC neurons.
 %
@@ -15,6 +15,7 @@ function [selected_neurons, sig_epoch_comparison, scSide] = screen_sc_neurons(se
 % INPUTS:
 %   session_data - A struct containing session-specific data, conforming to the
 %                  `session_data_dictionary.md`.
+%   project_root - The root path of the project directory.
 %
 % OUTPUT:
 %   selected_neurons - A logical vector (nClusters x 1) where true indicates
@@ -28,8 +29,6 @@ function [selected_neurons, sig_epoch_comparison, scSide] = screen_sc_neurons(se
 fprintf('screen_sc_neurons: Identifying task-modulated neurons...\n');
 
 % Define output directory and filename
-project_root = fullfile(findOneDrive, 'Code', ...
-    '4factors-analysis-pipeline');
 output_dir = fullfile(project_root, 'figures');
 
 % --- Setup and Data Extraction ---
