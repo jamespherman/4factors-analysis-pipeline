@@ -122,7 +122,7 @@ condition_defs.anova_plan.trial_mask = 'is_contralateral_target';
 % Each element defines a behavioral analysis to be run.
 condition_defs.behavior_plan(1).name = 'ReactionTime';
 condition_defs.behavior_plan(1).dependent_variable = ...
-    {'eventTimes.pdsSaccadeOn', '-', 'eventTimes.pdsFixOff'};
+    {'eventTimes.pdsSaccadeOnset', '-', 'eventTimes.pdsFixOff'};
 condition_defs.behavior_plan(1).factors = ...
     {'reward', 'salience', 'identity', 'probability'};
 condition_defs.behavior_plan(1).trial_mask = 'is_contralateral_target';

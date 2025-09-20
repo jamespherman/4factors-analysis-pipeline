@@ -32,9 +32,6 @@ dv_definition = behavior_plan_item.dependent_variable;
 num_trials = height(session_data.trialInfo);
 dv = NaN(num_trials, 1);
 
-% Use a helper function to safely get nested field data
-get_nested_field = @(s, f) subsref(s, substruct('.', strsplit(f, '.')));
-
 if ischar(dv_definition{1}) && strcmp(dv_definition{1}, 'endpoint_error')
     % Special case: Calculate Endpoint Error from post-saccade eye
     % position and target location.
@@ -58,7 +55,6 @@ elseif length(dv_definition) == 3 && strcmp(dv_definition{2}, '-')
     min_len = min(length(val1), length(val2));
 
     dv(1:min_len) = val1(1:min_len) - val2(1:min_len);
-
 else
     % Case: Direct extraction of a single field (e.g., for Peak Velocity)
     dv = get_nested_field(session_data, dv_definition{1});
@@ -75,11 +71,15 @@ tbl = table(dv(trial_mask), 'VariableNames', {'DV'});
 
 % Independent Variables (Factors)
 factors = behavior_plan_item.factors;
+try
 for i = 1:length(factors)
     factor_name = factors{i};
     % Factor data is stored in trialInfo and must be categorical for LME
     factor_data = session_data.trialInfo.(factor_name);
     tbl.(factor_name) = categorical(factor_data(trial_mask));
+end
+catch me
+    keyboard
 end
 
 % Random Effect (Session ID)
@@ -105,4 +105,13 @@ warning('on', 'stats:fitlme:NonIntegerVarResp');
 % Extract the ANOVA table containing the statistics for each factor
 results = anova(lme);
 
+end
+
+function val = get_nested_field(s, f)
+    % Helper function to access nested fields in a struct using a string path
+    parts = strsplit(f, '.');
+    val = s; % Start with the base struct
+    for i = 1:length(parts)
+        val = val.(parts{i}); % Iteratively index into the struct
+    end
 end

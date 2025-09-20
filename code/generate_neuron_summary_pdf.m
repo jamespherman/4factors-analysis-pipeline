@@ -100,6 +100,10 @@ fourfactors_trials = session_data.trialInfo.taskCode == ...
     fourfactors_task_code & ~cellfun(@isempty, ...
     session_data.eventTimes.rewardCell);
 
+% labels for x-ticks on waveform plots:
+xticklabels = arrayfun(@num2str, round((0:20:80)./30,2), ...
+    'UniformOutput', false);
+
 % Loop through each cluster to create a page of plots
 for i_cluster = 1:nClusters
 
@@ -130,7 +134,7 @@ for i_cluster = 1:nClusters
     % to place plots in a complex, multi-grid layout.
 
     % Waveform Plot (Position 1)
-    ax_wf = mySubPlot([1, N_COLS1, 1]);
+    ax_wf = mySubPlot([1, N_COLS1, 1], 'LeftMargin', 0.02);
     set(ax_wf, 'Tag', 'Waveform_Axis');
     if isfield(session_data.spikes, 'wfMeans') && ...
             numel(session_data.spikes.wfMeans) >= i_cluster
@@ -138,7 +142,7 @@ for i_cluster = 1:nClusters
         % find a good range for the 'offset' waveform provided by 
         % 'offsetArrayWaveform.m'
         ow = offsetArrayWaveform(...
-            session_data.spikes.wfMeans{i_cluster}', 0.025);
+            session_data.spikes.wfMeans{i_cluster}, 0.025);
         or = range(ow(:)); 
         om = mean(ow(:)); 
         yLim = om + [-1 1]*(1.1*or)/2;
@@ -148,20 +152,21 @@ for i_cluster = 1:nClusters
 
         % add title and other labels, set y-limit
         title(ax_wf, 'Mean Waveform');
-        xlabel(ax_wf, 'Samples');
+        xlabel(ax_wf, 'Time (ms)');
         set(ax_wf, 'YLim', yLim, 'Box', 'Off', 'TickDir', 'Out', ...
-            'YTickLabel', '')
+            'YTickLabel', '', 'XLim', [0 83], 'XTick', 0:20:80, ...
+            'XTickLabel', xticklabels)
     else
         text(0.5, 0.5, 'No waveform', 'Parent', ax_wf, ...
             'HorizontalAlignment', 'center');
     end
 
     % ISI Histogram (Position 2)
-    ax_isi = mySubPlot([N_ROWS, N_COLS1, N_ROWS/2]);
+    ax_isi = mySubPlot([6, 6, 26], 'LeftMargin', 0.1);
     set(ax_isi, 'Tag', 'ISI_Axis');
     if numel(spike_times) > 1
         isi = diff(spike_times) * 1000; % ms
-        histogram(ax_isi, isi, 'EdgeColor', 'k', ...
+        histogram(ax_isi, isi, 'EdgeColor', 'none', ...
             'FaceColor', [0.5 0.5 0.5]);
         set(ax_isi, 'XScale', 'log');
         title(ax_isi, 'ISI Histogram');
@@ -298,7 +303,7 @@ for i_cluster = 1:nClusters
     end
 
     %% --- Summary Information ---
-    ax_summary = mySubPlot([top_panel_grid, N_COLS * (N_ROWS - 1) + 1]);
+    ax_summary = mySubPlot([6, 6, 32], 'LeftMargin', 0.1);
     set(ax_summary, 'Tag', 'Summary_Axis');
     axis(ax_summary, 'off')
 
@@ -327,8 +332,6 @@ for i_cluster = 1:nClusters
 
     text(0.1, 0.5, summary_text, 'Parent', ax_summary, ...
         'VerticalAlignment', 'middle', 'FontSize', 10);
-    titleObj = title(ax_summary, 'Summary Information');
-    set(titleObj, 'Position', [0.5 1.5 0.5])
 
     %% --- Final Formatting ---
     % Find all PSTH axes by tag
