@@ -138,15 +138,19 @@ for i_cluster = 1:nClusters
         % find a good range for the 'offset' waveform provided by 
         % 'offsetArrayWaveform.m'
         ow = offsetArrayWaveform(...
-            session_data.spikes.wfMeans{i_cluster}', 0.2);
+            session_data.spikes.wfMeans{i_cluster}', 0.025);
         or = range(ow(:)); 
         om = mean(ow(:)); 
         yLim = om + [-1 1]*(1.1*or)/2;
+
+        % plot waveform
         plot(ax_wf, ow');
+
+        % add title and other labels, set y-limit
         title(ax_wf, 'Mean Waveform');
         xlabel(ax_wf, 'Samples');
-        ylabel(ax_wf, 'Amplitude (uV)');
-        set(ax_wf, 'YLim', yLim);
+        set(ax_wf, 'YLim', yLim, 'Box', 'Off', 'TickDir', 'Out', ...
+            'YTickLabel', '')
     else
         text(0.5, 0.5, 'No waveform', 'Parent', ax_wf, ...
             'HorizontalAlignment', 'center');
