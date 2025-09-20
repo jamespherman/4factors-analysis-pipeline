@@ -14,40 +14,42 @@
 %   core_data     - A structure containing the core neuronal and behavioral
 %                   data, pre-aligned to various events. See the project's
 %                   data dictionary for more details.
+%   conditions    - A structure containing logical masks for different
+%                   trial conditions. The field names of this struct
+%                   correspond to condition names.
 %
 % Name-Value Pair Inputs:
 %   'condition'   - A char vector specifying the name of the condition to
 %                   analyze (e.g., 'is_reward_high'). This condition must
-%                   exist as a field in core_data.conditions.
+%                   exist as a field in the 'conditions' struct.
 %
 % Outputs:
-%   analysis_results - A structure where each field is an alignment event.
-%                      Each of these fields is a struct whose name is the
-%                      condition that was analyzed. This nested struct
-%                      contains the following fields:
+%   analysis_results - A structure where each field corresponds to an
+%                      alignment event. Each of these fields is a struct
+%                      whose name is the condition that was analyzed. This
+%                      nested struct contains the following fields:
 %                        - sig: A matrix (neurons x time bins) of p-values
 %                          from the statistical comparison.
 %                        - time_vector: The time vector for the bins in 'sig'.
 %
 % Author: Jules
-% Date: 2025-09-19
+% Date: 2025-09-20
 
-function analysis_results = analyze_baseline_comparison(core_data, varargin)
+function analysis_results = analyze_baseline_comparison(core_data, conditions, varargin)
     %% Setup
     % Add the 'utils' directory to the path
     [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
     addpath(fullfile(script_dir, 'utils'));
 
     % --- Input Parsing ---
-    % Manually parse for 'condition' to accommodate the calling signature
-    % from run_4factors_analysis, which may include other arguments.
-    condition_name = '';
-    for i = 1:2:numel(varargin)
-        if ischar(varargin{i}) && strcmp(varargin{i}, 'condition')
-            condition_name = varargin{i+1};
-            break;
-        end
-    end
+    p = inputParser;
+    p.KeepUnmatched = true; % Allow other arguments not defined here
+    addRequired(p, 'core_data', @isstruct);
+    addRequired(p, 'conditions', @isstruct);
+    addParameter(p, 'condition', '', @ischar);
+    parse(p, core_data, conditions, varargin{:});
+
+    condition_name = p.Results.condition;
 
     if isempty(condition_name)
         error('analyze_baseline_comparison:noCondition', ...
@@ -57,37 +59,39 @@ function analysis_results = analyze_baseline_comparison(core_data, varargin)
     % Initialize the output structure
     analysis_results = struct();
 
-    % Get alignment event names dynamically from core_data
-    align_events = fieldnames(core_data.aligned_data);
+    % Get alignment event names dynamically from core_data.spikes
+    align_events = fieldnames(core_data.spikes);
 
     %% Main Analysis Loop
     % Iterate over each alignment event
     for i_event = 1:numel(align_events)
         event_name = align_events{i_event};
 
-        if ~isfield(core_data.aligned_data, event_name)
-            % This check is redundant given the source of align_events,
-            % but it's a safe guard.
+        if ~isfield(core_data.spikes, event_name)
             continue;
         end
 
-        event_data = core_data.aligned_data.(event_name);
+        event_data = core_data.spikes.(event_name);
 
         % Define baseline and comparison windows based on event type
-        if strcmp(event_name, 'sac_saccadeOn')
-            % For saccades, use a fixed pre-saccadic baseline
-            baseline_window = [-0.5, -0.4];
-        else
-            % For other events, use the pre-event period
+        if isfield(event_data, 'pre_time')
             baseline_window = [event_data.pre_time, 0];
             if event_data.pre_time >= 0
                 baseline_window = [-0.2, 0];
             end
+        else
+            baseline_window = [-0.2, 0]; % Default if not specified
         end
-        comp_window = [0, event_data.post_time];
-        if event_data.post_time <= 0
-            comp_window = [0, 0.5];
+
+        if isfield(event_data, 'post_time')
+            comp_window = [0, event_data.post_time];
+            if event_data.post_time <= 0
+                comp_window = [0, 0.5];
+            end
+        else
+            comp_window = [0, 0.5]; % Default if not specified
         end
+
 
         % Get indices for baseline and comparison bins
         bin_centers = event_data.time_vector;
@@ -101,11 +105,11 @@ function analysis_results = analyze_baseline_comparison(core_data, varargin)
         end
 
         % Get the trial mask for the specified condition
-        if isfield(core_data.conditions, condition_name)
-            trial_mask = core_data.conditions.(condition_name);
+        if isfield(conditions, condition_name)
+            trial_mask = conditions.(condition_name);
         else
             warning('analyze_baseline_comparison:conditionNotFound', ...
-                'Condition ''%s'' not found in core_data.conditions. Skipping for event %s.', ...
+                'Condition ''%s'' not found in conditions struct. Skipping for event %s.', ...
                 condition_name, event_name);
             continue;
         end
@@ -115,8 +119,9 @@ function analysis_results = analyze_baseline_comparison(core_data, varargin)
         end
 
         % Select data based on the trial mask
-        sub_data = event_data.data_array(trial_mask, :, :);
-        [n_sel_trials, n_neurons, ~] = size(sub_data);
+        % The data array dimensions are (neurons, trials, time_bins)
+        sub_data = event_data.rates(:, trial_mask, :);
+        [n_neurons, n_sel_trials, ~] = size(sub_data);
 
         % Initialize results arrays
         n_comp_bins = sum(comp_idx);
@@ -125,10 +130,11 @@ function analysis_results = analyze_baseline_comparison(core_data, varargin)
         % Iterate through each neuron
         for i_neuron = 1:n_neurons
             % Get baseline activity for this neuron
-            neuron_baseline_data = mean(squeeze(sub_data(:, i_neuron, baseline_idx)), 2, 'omitnan');
+            % Squeeze to get a (trials x bins) matrix, then mean over bins
+            neuron_baseline_data = mean(squeeze(sub_data(i_neuron, :, baseline_idx)), 2, 'omitnan');
 
             % Get comparison activity for this neuron
-            neuron_comp_data = squeeze(sub_data(:, i_neuron, comp_idx));
+            neuron_comp_data = squeeze(sub_data(i_neuron, :, comp_idx));
 
             if n_sel_trials == 1 && n_comp_bins > 1
                 neuron_comp_data = neuron_comp_data';
