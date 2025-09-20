@@ -46,18 +46,18 @@ function session_data = analyze_anova(session_data, core_data, ...
     session_data.analysis.anova_results.(event_name) = struct();
 
     %% Prepare Data for ANOVA
-    if ~isfield(core_data.aligned_data, event_name)
+    if ~isfield(core_data.spikes, event_name)
         warning('analyze_anova:eventNotFound', ...
             'Event ''%s'' not found in core_data. Skipping ANOVA.', ...
             event_name);
         return;
     end
-    event_data = core_data.aligned_data.(event_name);
+    event_data = core_data.spikes.(event_name);
     time_vector = event_data.time_vector;
 
     % Calculate mean firing rate in the post-event window (t >= 0)
     post_event_bins = time_vector >= 0;
-    mean_fr = mean(event_data.data_array(:, :, post_event_bins), 3, 'omitnan');
+    mean_fr = mean(event_data.rates(:, :, post_event_bins), 3, 'omitnan');
 
     % Get the trial mask to select trials for the ANOVA
     if ~isfield(conditions, trial_mask_name)
@@ -67,7 +67,7 @@ function session_data = analyze_anova(session_data, core_data, ...
         return;
     end
     trial_mask = conditions.(trial_mask_name);
-    filtered_fr = mean_fr(trial_mask, :);
+    filtered_fr = mean_fr(:, trial_mask);
 
     %% Prepare Grouping Variables and Run ANOVA
     group_vars = cell(1, length(factors));
@@ -93,13 +93,13 @@ function session_data = analyze_anova(session_data, core_data, ...
         group_vars{i} = group_var;
     end
 
-    n_neurons = size(filtered_fr, 2);
+    n_neurons = size(filtered_fr, 1);
     p_values = cell(1, n_neurons);
     term_names_collected = false;
     tbl_term_names = {};
 
     for i_neuron = 1:n_neurons
-        y = filtered_fr(:, i_neuron);
+        y = filtered_fr(i_neuron, :)';
         if sum(~isnan(y)) < length(y) * 0.5 || isempty(y)
             continue;
         end
@@ -108,7 +108,7 @@ function session_data = analyze_anova(session_data, core_data, ...
             'varnames', factor_names, 'display', 'off');
         p_values{i_neuron} = p;
 
-        if ~term_names_collected && !isempty(tbl)
+        if ~term_names_collected && ~isempty(tbl)
             tbl_term_names = tbl(2:(end-2), 1);
             term_names_collected = true;
         end

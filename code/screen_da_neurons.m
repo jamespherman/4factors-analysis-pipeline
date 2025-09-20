@@ -1,4 +1,4 @@
-function selected_neurons = screen_da_neurons(session_data, session_id)
+function selected_neurons = screen_da_neurons(session_data, session_id, project_root)
 % screen_da_neurons - Selects putative DA neurons based on electrophysiological properties.
 %
 % This function screens neurons based on their baseline firing rate and
@@ -9,6 +9,7 @@ function selected_neurons = screen_da_neurons(session_data, session_id)
 %                  from a *_session_data.mat file. See the data dictionary
 %                  for more info.
 %   session_id   - A string identifier for the session (e.g., 'M01_20230101').
+%   project_root - The root path of the project directory.
 %
 % OUTPUT:
 %   selected_neurons - A logical vector (nNeurons x 1) where true indicates
@@ -47,7 +48,6 @@ fprintf('... found %d putative DA neurons (FR < 20 sp/s).\n', ...
 % --- 3. Generate and Save Diagnostic Plot ---
 
 % Define the project root and ensure the figures directory exists
-project_root = fullfile(findOneDrive, 'Code', '4factors-analysis-pipeline');
 figures_dir = fullfile(project_root, 'figures');
 
 if ~exist(figures_dir, 'dir')

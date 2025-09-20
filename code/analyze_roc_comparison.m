@@ -53,14 +53,14 @@ function analysis_results = analyze_roc_comparison(core_data, ...
     comp_name = comparison.name;
 
     % Check if the alignment event exists in the core data
-    if ~isfield(core_data.aligned_data, event_name)
+    if ~isfield(core_data.spikes, event_name)
         warning('Event ''%s'' not found in core_data. Skipping ''%s''.', ...
                 event_name, comp_name);
         return;
     end
 
-    event_data = core_data.aligned_data.(event_name);
-    [~, n_neurons, n_bins] = size(event_data.data_array);
+    event_data = core_data.spikes.(event_name);
+    [n_neurons, ~, n_bins] = size(event_data.rates);
 
     %% Get Trial Masks
     if ~isfield(conditions, cond1_name) || ~isfield(conditions, cond2_name)
@@ -93,7 +93,7 @@ function analysis_results = analyze_roc_comparison(core_data, ...
     sig_vals = NaN(n_neurons, n_bins);
 
     for i_neuron = 1:n_neurons
-        neuron_data = squeeze(event_data.data_array(:, i_neuron, :));
+        neuron_data = squeeze(event_data.rates(i_neuron, :, :));
         cond1_data = neuron_data(cond1_mask, :);
         cond2_data = neuron_data(cond2_mask, :);
 
