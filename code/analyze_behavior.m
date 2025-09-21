@@ -67,7 +67,7 @@ end
 trial_mask = conditions.(behavior_plan_item.trial_mask);
 
 % Dependent Variable
-tbl = table(dv(trial_mask), 'VariableNames', {'DV'});
+tbl = table(dv(trial_mask)', 'VariableNames', {'DV'});
 
 % Independent Variables (Factors)
 factors = behavior_plan_item.factors;
