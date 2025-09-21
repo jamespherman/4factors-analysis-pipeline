@@ -228,3 +228,14 @@ Example:
 unique_id = 'My_Session_2025_09_09';
 sgtitle(sprintf('Data Verification for: %s', unique_id), 'Interpreter', 'none');
 ```
+
+---
+## Coordinate System and Angle Conventions
+
+All angular measurements, such as `trialInfo.targetTheta`, adhere to the standard mathematical convention for polar coordinates.
+* **Angle Reference:** 0° corresponds to the positive x-axis (the 3 o'clock position).
+* **Angle Direction:** Angles increase in a counter-clockwise direction.
+* **Angle Range:** Angles are expressed in degrees, typically in the range `[0, 360)`.
+* **Visual Field Definitions:**
+    * **Right Visual Field:** `(theta >= 0 AND theta < 90) OR (theta > 270 AND theta < 360)`
+    * **Left Visual Field:** `(theta > 90 AND theta < 270)`
