@@ -342,18 +342,24 @@ else
         grid_hole_str);
 end
 
+% Define visual field masks based on standard polar coordinates
+theta = trialInfo.targetTheta;
+is_right_visual_field = (theta >= 0 & theta < 90) | ...
+                        (theta > 270 & theta < 360);
+is_left_visual_field = (theta > 90 & theta < 270);
+
 if grid_x < 0
     scSide = 'left';
-    % Left SC -> Contralateral is Right Visual Field (theta > 0)
-    contra_thetas = trialInfo.targetTheta > 0;
+    % Left SC -> Contralateral is Right Visual Field
+    contra_thetas = is_right_visual_field;
 elseif grid_x > 0
     scSide = 'right';
-    % Right SC -> Contralateral is Left Visual Field (theta < 0)
-    contra_thetas = trialInfo.targetTheta < 0;
+    % Right SC -> Contralateral is Left Visual Field
+    contra_thetas = is_left_visual_field;
 else
     % Default to right visual field if grid_x is 0 or ambiguous
     scSide = 'unknown';
-    contra_thetas = trialInfo.targetTheta > 0;
+    contra_thetas = is_right_visual_field;
     warning(['grid_x is 0 or could not be determined; defaulting ' ...
         'contralateral to right visual field.']);
 end
