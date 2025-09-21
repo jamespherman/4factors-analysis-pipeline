@@ -343,7 +343,7 @@ else
 end
 
 % Define visual field masks based on standard polar coordinates
-theta = trialInfo.targetTheta;
+theta = trialInfo.targetTheta / 10;
 is_right_visual_field = (theta >= 0 & theta < 90) | ...
                         (theta > 270 & theta < 360);
 is_left_visual_field = (theta > 90 & theta < 270);
