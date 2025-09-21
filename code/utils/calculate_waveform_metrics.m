@@ -53,14 +53,9 @@ end
 
 % --- Calculate Duration ---
 
-% Duration in number of samples. Use abs because the order of peak and
-% trough is not guaranteed.
-duration_samples = abs(peak_idx - trough_idx);
-
 % Convert duration from samples to milliseconds
 % duration_ms = (duration_in_samples / sampling_rate_in_Hz) * 1000
-peak_trough_ms = (duration_samples / fs) * 1000;
-
+peak_trough_ms = getSpikeWidth_spectral(waveform, fs);
 
 % --- Store metrics in output struct ---
 metrics.peak_trough_ms = peak_trough_ms;
