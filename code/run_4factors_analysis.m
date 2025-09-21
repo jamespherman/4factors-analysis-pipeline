@@ -156,21 +156,26 @@ for i = 1:height(manifest)
     end
 
     % C. N-way ANOVA Analysis
-    if analysis_plan.anova_plan.run
-        path_to_check = 'analysis.anova_results';
-        S = substruct('.', strsplit(path_to_check, '.'));
-        is_missing = false;
-        try
-            subsref(session_data, S);
-        catch
-            is_missing = true;
-        end
-        if is_missing || force_rerun.analyses
-            n_total_steps = n_total_steps + 1;
+    if isfield(analysis_plan, 'anova_plan')
+        for j = 1:length(analysis_plan.anova_plan)
+            current_plan_item = analysis_plan.anova_plan(j);
+            analysis_name = current_plan_item.name;
+            path_as_string = ['analysis.anova_results.' analysis_name];
+            S = substruct('.', strsplit(path_as_string, '.'));
+            is_missing = false;
+            try
+                subsref(session_data, S);
+            catch
+                is_missing = true;
+            end
+            if is_missing || force_rerun.analyses
+                n_total_steps = n_total_steps + 1;
+            end
         end
     end
 
     % D. Behavioral Analyses
+    % Loop through each behavioral analysis plan.
     if isfield(analysis_plan, 'behavior_plan')
         for j = 1:length(analysis_plan.behavior_plan)
             analysis_name = analysis_plan.behavior_plan(j).name;
@@ -390,29 +395,36 @@ for i = 1:height(manifest)
     end
 
     % C. N-way ANOVA Analysis
-    if analysis_plan.anova_plan.run
-        % Standardized Idempotency Check
-        is_missing = false;
-        path_to_check = 'analysis.anova_results';
-        S = substruct('.', strsplit(path_to_check, '.'));
-        try
-            subsref(session_data, S);
-        catch
-            is_missing = true;
-        end
+    if isfield(analysis_plan, 'anova_plan')
+        for j = 1:length(analysis_plan.anova_plan)
+            current_plan_item = analysis_plan.anova_plan(j);
+            analysis_name = current_plan_item.name;
 
-        if is_missing || force_rerun.analyses
-            step_counter = step_counter + 1;
-            fprintf('\n--- Session %s: Step %d/%d: N-way ANOVA ---\n', ...
-                unique_id, step_counter, n_total_steps);
-            giveFeed('--> Running N-way ANOVA');
-            session_data = analyze_anova(session_data, core_data, ...
-                conditions, analysis_plan.anova_plan);
-            data_updated = true;
+            % Standardized Idempotency Check
+            is_missing = false;
+            path_as_string = ['analysis.anova_results.' analysis_name];
+            S = substruct('.', strsplit(path_as_string, '.'));
+            try
+                subsref(session_data, S);
+            catch
+                is_missing = true;
+            end
+
+            if is_missing || force_rerun.analyses
+                step_counter = step_counter + 1;
+                fprintf('\n--- Session %s: Step %d/%d: N-way ANOVA for %s ---\n', ...
+                    unique_id, step_counter, n_total_steps, analysis_name);
+                giveFeed(sprintf('--> Running N-way ANOVA: %s', analysis_name));
+                % Pass the specific plan item to the analysis function
+                session_data = analyze_anova(session_data, core_data, ...
+                    conditions, current_plan_item);
+                data_updated = true;
+            end
         end
     end
 
     % D. Behavioral Analyses
+    % Loop through each behavioral analysis plan.
     if isfield(analysis_plan, 'behavior_plan')
         for j = 1:length(analysis_plan.behavior_plan)
             plan_item = analysis_plan.behavior_plan(j);
@@ -545,17 +557,23 @@ for i = 1:height(manifest)
     end
 
     % C. Check N-way ANOVA
-    if is_analysis_complete && analysis_plan.anova_plan.run
-        path_to_check = 'analysis.anova_results';
-        S = substruct('.', strsplit(path_to_check, '.'));
-        try
-            subsref(session_data, S);
-        catch
-            is_analysis_complete = false;
+    if is_analysis_complete && isfield(analysis_plan, 'anova_plan')
+        for j = 1:length(analysis_plan.anova_plan)
+            current_plan_item = analysis_plan.anova_plan(j);
+            analysis_name = current_plan_item.name;
+            path_as_string = ['analysis.anova_results.' analysis_name];
+            S = substruct('.', strsplit(path_as_string, '.'));
+            try
+                subsref(session_data, S);
+            catch
+                is_analysis_complete = false;
+                break;
+            end
         end
     end
 
     % D. Check behavioral analyses
+    % Loop through each behavioral analysis plan to verify completion.
     if is_analysis_complete && isfield(analysis_plan, 'behavior_plan')
         for j = 1:length(analysis_plan.behavior_plan)
             analysis_name = analysis_plan.behavior_plan(j).name;
