@@ -18,7 +18,9 @@ function [conditions, condition_defs] = define_task_conditions(varargin)
 %                   a trial meets a specific condition (e.g.,
 %                   `is_high_reward`). These masks are filtered to
 %                   only include valid, successful trials from the
-%                   '4factors' task.
+%                   '4factors' task. It also contains a `factors`
+%                   sub-struct with cell arrays of categorical
+%                   labels for use in ANOVA.
 %
 %   condition_defs: A struct containing the full, session-agnostic
 %                   analysis_plan. This serves as the single source
@@ -110,12 +112,8 @@ condition_defs.diagnostic_plots = diag_plots;
 % F. N-way ANOVA Plan
 condition_defs.anova_plan.run = true;
 condition_defs.anova_plan.event = 'targetOn';
-condition_defs.anova_plan.factors = { ...
-    condition_defs.condition_masks.reward, ...
-    condition_defs.condition_masks.salience, ...
-    condition_defs.condition_masks.identity, ...
-    condition_defs.condition_masks.probability ...
-};
+condition_defs.anova_plan.factors = ...
+    {'reward', 'saliency', 'identity', 'probability'};
 condition_defs.anova_plan.trial_mask = 'is_contralateral_target';
 
 % G. Behavioral Analysis Plan
@@ -437,5 +435,37 @@ conditions.is_nonface_target = isNonfaceTarget(masterMask);
 conditions.is_image_target = is_image_target(masterMask);
 conditions.is_high_probability = isHighProbability(masterMask);
 conditions.is_low_probability = isLowProbability(masterMask);
+
+%% --- Create Categorical Factors for ANOVA ---
+% This section creates the final categorical grouping variables for
+% the ANOVA, filtered by the masterMask.
+conditions.factors = struct();
+
+% Identity Factor
+identity_factor = cell(size(masterMask));
+identity_factor(trialInfo.stimType == 1) = {'face'};
+identity_factor(trialInfo.stimType == 2) = {'nonface'};
+identity_factor(trialInfo.stimType > 2) = {'bullseye'};
+conditions.factors.identity = identity_factor(masterMask);
+
+% Saliency Factor
+saliency_factor = cell(size(masterMask));
+saliency_factor(isHighSalience) = {'high'};
+saliency_factor(isLowSalience) = {'low'};
+% 'neutral' corresponds to bullseye trials (not an image)
+saliency_factor(~is_image_target) = {'neutral'};
+conditions.factors.saliency = saliency_factor(masterMask);
+
+% Reward Factor
+reward_factor = cell(size(masterMask));
+reward_factor(isHighReward) = {'high'};
+reward_factor(isLowReward) = {'low'};
+conditions.factors.reward = reward_factor(masterMask);
+
+% Probability Factor
+prob_factor = cell(size(masterMask));
+prob_factor(isHighProbability) = {'high'};
+prob_factor(isLowProbability) = {'low'};
+conditions.factors.probability = prob_factor(masterMask);
 
 end
