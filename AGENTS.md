@@ -5,6 +5,16 @@
 **The execution environment for this project does not have a functional MATLAB instance.** Any attempt to run or test MATLAB code will fail. Please proceed directly with generating the required code modifications and submit them for external testing.
 
 ---
+## Refactoring and Impact Analysis Protocol
+
+When you are asked to refactor or modify code, your implementation plan must be comprehensive and account for all dependencies across the entire pipeline. Before writing any code, you must consider the impact of the change on all related files. Use the following checklist to ensure your plan is complete:
+
+1.  **Definition:** Which files define the relevant data structures or configurations (e.g., `define_task_conditions.m`, `.md` files)?
+2.  **Creation:** Which scripts create the data on a per-session basis (e.g., `analyze_*.m` functions)?
+3.  **Orchestration:** Which scripts read the configuration to execute the creation process (e.g., `run_4factors_analysis.m`)?
+4.  **Aggregation:** Which scripts pool the data from multiple sessions (e.g., `aggregate_analysis_results.m`)?
+5.  **Consumption:** Which scripts consume the final aggregated data (e.g., `plot_aggregated_*.m` functions)?
+---
 
 ## IMPORTANT: Data Structures
 
@@ -232,10 +242,14 @@ sgtitle(sprintf('Data Verification for: %s', unique_id), 'Interpreter', 'none');
 ---
 ## Coordinate System and Angle Conventions
 
-All angular measurements, such as `trialInfo.targetTheta`, adhere to the standard mathematical convention for polar coordinates.
+All angular measurements adhere to the standard mathematical convention for polar coordinates.
+
+* **`trialInfo.targetTheta`**: This specific variable stores the target angle in degrees, multiplied by 10 for strobing purposes. **It must be divided by 10 before use in any geometric calculations.**
 * **Angle Reference:** 0° corresponds to the positive x-axis (the 3 o'clock position).
 * **Angle Direction:** Angles increase in a counter-clockwise direction.
-* **Angle Range:** Angles are expressed in degrees, typically in the range `[0, 360)`.
+* **Angle Range:** After division by 10, angles are expressed in degrees, typically in the range `[0, 360)`.
 * **Visual Field Definitions:**
     * **Right Visual Field:** `(theta >= 0 AND theta < 90) OR (theta > 270 AND theta < 360)`
     * **Left Visual Field:** `(theta > 90 AND theta < 270)`
+---
+
