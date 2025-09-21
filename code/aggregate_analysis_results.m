@@ -1,15 +1,16 @@
 %% aggregate_analysis_results.m
 %
-% Systematically gathers all pre-computed single-session analysis results
-% and pools them by brain area. This script now relies on a predefined
-% analysis plan, leveraging the standardized data structure.
+% Gathers all single-session analysis results and pools them by
+% brain area. This script is aligned with the two-model analysis
+% plan defined in `define_task_conditions.m`, handling the nested
+% output structures for Image and Bullseye trial analyses.
 %
 % OUTPUT:
-%   aggregated_sc_data  - A struct containing aggregated data for SC.
-%   aggregated_snc_data - A struct containing aggregated data for SNc.
+%   aggregated_sc_data  - A struct with aggregated data for SC.
+%   aggregated_snc_data - A struct with aggregated data for SNc.
 %
 % Author: Jules
-% Date: 2025-09-13 (Refactored)
+% Date: 2025-09-21 (Refactored for two-model approach)
 %
 
 function [aggregated_sc_data, aggregated_snc_data] = aggregate_analysis_results
@@ -63,23 +64,22 @@ for i_area = 1:length(brain_areas)
         end
     end
 
-    % 3. Initialize ANOVA Results
+    % 3. Initialize ANOVA Results (for Two-Model Structure)
     agg_data.anova_results = struct();
-    if analysis_plan.anova_plan.run
-        for i_event = 1:length(analysis_plan.anova_plan.events)
-            event_name = analysis_plan.anova_plan.events{i_event};
-            for i_p = 1:length(analysis_plan.anova_plan.p_value_names)
-                p_name = analysis_plan.anova_plan.p_value_names{i_p};
-                agg_data.anova_results.(event_name).(p_name) = [];
-            end
+    for j = 1:length(analysis_plan.anova_plan)
+        plan_item = analysis_plan.anova_plan(j);
+        if plan_item.run
+            % The results from analyze_anova are not nested by event
+            % but are stored directly under the analysis name.
+            agg_data.anova_results.(plan_item.name) = struct();
         end
     end
 
-    % 4. Initialize Behavioral Results
+    % 4. Initialize Behavioral Results (for Two-Model Structure)
     agg_data.behavioral_results = struct();
     for j = 1:length(analysis_plan.behavior_plan)
-        analysis_name = analysis_plan.behavior_plan(j).name;
-        agg_data.behavioral_results.(analysis_name) = table();
+        plan_item = analysis_plan.behavior_plan(j);
+        agg_data.behavioral_results.(plan_item.name) = table();
     end
 
     % 5. Initialize Population Decoding Results
@@ -178,19 +178,17 @@ for i_session = 1:nSessions
     end
 
     % --- 3. Aggregate ANOVA Results ---
-    if analysis_plan.anova_plan.run && isfield(session_data.analysis, 'anova_results')
-        for i_event = 1:length(analysis_plan.anova_plan.events)
-            event = analysis_plan.anova_plan.events{i_event};
-            for i_p = 1:length(analysis_plan.anova_plan.p_value_names)
-                p_name = analysis_plan.anova_plan.p_value_names{i_p};
+    if isfield(session_data.analysis, 'anova_results')
+        for j = 1:length(analysis_plan.anova_plan)
+            plan_item = analysis_plan.anova_plan(j);
+            analysis_name = plan_item.name;
 
-                data_to_append = nan(n_neurons, 1); % Default to NaN
-                if isfield(session_data.analysis.anova_results, event) && ...
-                   isfield(session_data.analysis.anova_results.(event), p_name)
-                    data_to_append = session_data.analysis.anova_results.(event).(p_name);
-                end
-                agg_data.anova_results.(event).(p_name) = ...
-                    [agg_data.anova_results.(event).(p_name); data_to_append];
+            if isfield(session_data.analysis.anova_results, analysis_name)
+                session_results = session_data.analysis.anova_results.(analysis_name);
+                agg_data.anova_results.(analysis_name) = [ ...
+                    agg_data.anova_results.(analysis_name); ...
+                    session_results ...
+                ];
             end
         end
     end
@@ -198,7 +196,8 @@ for i_session = 1:nSessions
     % --- 4. Aggregate Behavioral Results ---
     if isfield(session_data.analysis, 'behavioral_results')
         for j = 1:length(analysis_plan.behavior_plan)
-            analysis_name = analysis_plan.behavior_plan(j).name;
+            plan_item = analysis_plan.behavior_plan(j);
+            analysis_name = plan_item.name;
 
             if isfield(session_data.analysis.behavioral_results, analysis_name)
                 session_table = session_data.analysis.behavioral_results.(analysis_name);

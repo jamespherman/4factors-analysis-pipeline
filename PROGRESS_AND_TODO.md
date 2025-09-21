@@ -50,10 +50,10 @@ This document tracks the development of the analysis pipeline. It has been updat
 
 ### **Part 4: Future Work and Optimization (To-Do)**
 
-*   [ ] **Task 4.1: Refactor ANOVA/Behavioral Analysis for Confounded Factors**
-    *   [ ] Updating `define_task_conditions.m` to split the analysis plans.
-    *   [ ] Updating `aggregate_analysis_results.m` to handle the new result structures.
-    *   [ ] Updating `plot_aggregated_anova.m` and `plot_aggregated_behavior.m` to visualize the results from the two separate models.
+*   [x] **Task 4.1: Refactor ANOVA/Behavioral Analysis for Confounded Factors**
+    *   [x] Updating `define_task_conditions.m` to split the analysis plans.
+    *   [x] Updating `aggregate_analysis_results.m` to handle the new result structures.
+    *   [x] Updating `plot_aggregated_anova.m` and `plot_aggregated_behavior.m` to visualize the results from the two separate models.
 *   [x] **Task 4.2: Population Decoding Module**
     *   Implement functions to perform time-resolved and windowed SVM classification to decode task variables from neural population activity.
 *   [ ] **Task 4.3: Dimensionality Reduction Module**
