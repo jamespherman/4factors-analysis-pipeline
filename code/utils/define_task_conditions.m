@@ -1,37 +1,32 @@
 function [conditions, condition_defs] = define_task_conditions(varargin)
 % DEFINE_TASK_CONDITIONS Creates trial condition masks and defines
-% analysis plans
+% analysis plans for a two-model approach.
 %
-% This function serves a dual purpose for the 4factors task:
-% 1.  When called without arguments, it returns a comprehensive
-%     analysis plan in the `condition_defs` struct. This plan is
-%     the single source of truth for all analyses run in the main
-%     pipeline.
-% 2.  When called with session data, it determines the recorded
-%     hemisphere based on manifest data and calculates a struct of
-%     logical masks for various spatial and trial-based conditions.
+% This function is the single source of truth for analysis
+% configuration in the 4factors task. It partitions analyses into
+% two models to de-confound identity and salience factors:
+% 1.  **Image Trials Model:** Analyzes trials where the target was a
+%     face or non-face image. Factors: reward, probability, identity.
+% 2.  **Bullseye Trials Model:** Analyzes trials with a bullseye
+%     target. Factors: reward, probability, salience.
+%
+% It returns a comprehensive analysis plan (`condition_defs`) and,
+% when provided with session data, a struct of logical trial masks
+% (`conditions`) aligned to this two-model approach.
 %
 % OUTPUTS:
 %   conditions:     A struct of logical masks for trial conditions,
-%                   specific to a single session's data. Each field
-%                   is a logical vector where `true` indicates that
-%                   a trial meets a specific condition (e.g.,
-%                   `is_high_reward`). These masks are filtered to
-%                   only include valid, successful trials from the
-%                   '4factors' task. It also contains a `factors`
-%                   sub-struct with cell arrays of categorical
+%                   specific to a session's data. It includes masks
+%                   like `is_image_target` and `is_bullseye_target`
+%                   to separate trials for the two models. It also
+%                   contains a `factors` sub-struct with categorical
 %                   labels for use in ANOVA.
 %
-%   condition_defs: A struct containing the full, session-agnostic
-%                   analysis_plan. This serves as the single source
-%                   of truth for what analyses to run, what
-%                   conditions to compare, and how to configure
-%                   them. It is used by the main analysis pipeline
-%                   to orchestrate the entire analysis. The
-%                   `.decoding_plan` field is further divided into a
-%                   `.training_plan` for defining classifiers and a
-%                   `.testing_plan` for defining generalization
-%                   tests.
+%   condition_defs: A struct containing the session-agnostic
+%                   analysis plan. This plan is now structured as
+%                   a two-element array for ANOVA and behavioral
+%                   analyses, corresponding to the Image and
+%                   Bullseye models.
 
 %% --- I. Define the Comprehensive Analysis Plan ---
 % This section defines the entire analysis plan. It is used by the
@@ -109,34 +104,62 @@ diag_plots(2).conditions_to_compare = ...
     {'is_contralateral_target', 'is_ipsilateral_target'};
 condition_defs.diagnostic_plots = diag_plots;
 
-% F. N-way ANOVA Plan
-condition_defs.anova_plan.run = true;
-condition_defs.anova_plan.event = 'targetOn';
-condition_defs.anova_plan.factors = ...
-    {'reward', 'salience', 'identity', 'probability'};
-condition_defs.anova_plan.trial_mask = 'is_contralateral_target';
+% F. N-way ANOVA Plan (Two-Model Approach)
+condition_defs.anova_plan = struct('name', {}, 'run', {}, ...
+    'event', {}, 'factors', {}, 'trial_mask', {});
+% Model 1: Image Trials
+condition_defs.anova_plan(1).name = 'anova_imagetrials';
+condition_defs.anova_plan(1).run = true;
+condition_defs.anova_plan(1).event = 'targetOn';
+condition_defs.anova_plan(1).factors = {'reward', 'probability', 'identity'};
+condition_defs.anova_plan(1).trial_mask = ...
+    {'is_contralateral_target', 'is_image_target'};
+% Model 2: Bullseye Trials
+condition_defs.anova_plan(2).name = 'anova_bullseyetrials';
+condition_defs.anova_plan(2).run = true;
+condition_defs.anova_plan(2).event = 'targetOn';
+condition_defs.anova_plan(2).factors = {'reward', 'probability', 'saliency'};
+condition_defs.anova_plan(2).trial_mask = ...
+    {'is_contralateral_target', 'is_bullseye_target'};
 
-% G. Behavioral Analysis Plan
-% Each element defines a behavioral analysis to be run.
-condition_defs.behavior_plan(1).name = 'ReactionTime';
+% G. Behavioral Analysis Plan (Two-Model Approach)
+condition_defs.behavior_plan = struct('name', {}, ...
+    'dependent_variable', {}, 'factors', {}, 'trial_mask', {});
+% -- Reaction Time --
+condition_defs.behavior_plan(1).name = 'reaction_time_imagetrials';
 condition_defs.behavior_plan(1).dependent_variable = ...
     {'eventTimes.pdsSaccadeOnset', '-', 'eventTimes.pdsFixOff'};
-condition_defs.behavior_plan(1).factors = ...
-    {'reward', 'salience', 'identity', 'probability'};
-condition_defs.behavior_plan(1).trial_mask = 'is_contralateral_target';
-condition_defs.behavior_plan(2).name = 'PeakVelocity';
+condition_defs.behavior_plan(1).factors = {'reward', 'probability', 'identity'};
+condition_defs.behavior_plan(1).trial_mask = ...
+    {'is_contralateral_target', 'is_image_target'};
+condition_defs.behavior_plan(2).name = 'reaction_time_bullseyetrials';
 condition_defs.behavior_plan(2).dependent_variable = ...
-    {'trialInfo.peakVel'};
-condition_defs.behavior_plan(2).factors = ...
-    {'reward', 'salience', 'identity', 'probability'};
-condition_defs.behavior_plan(2).trial_mask = 'is_contralateral_target';
-condition_defs.behavior_plan(3).name = 'EndpointError';
-% 'endpoint_error' is a special keyword that will be calculated by
-% the analysis function from postSacXY and target location.
-condition_defs.behavior_plan(3).dependent_variable = {'endpoint_error'};
-condition_defs.behavior_plan(3).factors = ...
-    {'reward', 'salience', 'identity', 'probability'};
-condition_defs.behavior_plan(3).trial_mask = 'is_contralateral_target';
+    {'eventTimes.pdsSaccadeOnset', '-', 'eventTimes.pdsFixOff'};
+condition_defs.behavior_plan(2).factors = {'reward', 'probability', 'saliency'};
+condition_defs.behavior_plan(2).trial_mask = ...
+    {'is_contralateral_target', 'is_bullseye_target'};
+% -- Peak Velocity --
+condition_defs.behavior_plan(3).name = 'peak_velocity_imagetrials';
+condition_defs.behavior_plan(3).dependent_variable = {'trialInfo.peakVel'};
+condition_defs.behavior_plan(3).factors = {'reward', 'probability', 'identity'};
+condition_defs.behavior_plan(3).trial_mask = ...
+    {'is_contralateral_target', 'is_image_target'};
+condition_defs.behavior_plan(4).name = 'peak_velocity_bullseyetrials';
+condition_defs.behavior_plan(4).dependent_variable = {'trialInfo.peakVel'};
+condition_defs.behavior_plan(4).factors = {'reward', 'probability', 'saliency'};
+condition_defs.behavior_plan(4).trial_mask = ...
+    {'is_contralateral_target', 'is_bullseye_target'};
+% -- Endpoint Error --
+condition_defs.behavior_plan(5).name = 'endpoint_error_imagetrials';
+condition_defs.behavior_plan(5).dependent_variable = {'endpoint_error'};
+condition_defs.behavior_plan(5).factors = {'reward', 'probability', 'identity'};
+condition_defs.behavior_plan(5).trial_mask = ...
+    {'is_contralateral_target', 'is_image_target'};
+condition_defs.behavior_plan(6).name = 'endpoint_error_bullseyetrials';
+condition_defs.behavior_plan(6).dependent_variable = {'endpoint_error'};
+condition_defs.behavior_plan(6).factors = {'reward', 'probability', 'saliency'};
+condition_defs.behavior_plan(6).trial_mask = ...
+    {'is_contralateral_target', 'is_bullseye_target'};
 
 % H. Population Decoding Plan
 % This plan is now a two-stage process. First, a set of classifiers
@@ -400,10 +423,11 @@ isLowReward = (trialInfo.rewardDuration < 200);
 isHighSalience = (trialInfo.salience == 2);
 isLowSalience = (trialInfo.salience == 1);
 
-% 3. Identity (stimType: 1=Face, 2=Non-face)
+% 3. Identity (stimType: 1=Face, 2=Non-face, >2=Bullseye)
 isFaceTarget = (trialInfo.stimType == 1);
 isNonfaceTarget = (trialInfo.stimType == 2);
 is_image_target = isFaceTarget | isNonfaceTarget;
+is_bullseye_target = (trialInfo.stimType > 2);
 
 % 4. Spatial Probability (Data-Driven)
 % Get target locations for all valid gSac_4factors trials
@@ -433,6 +457,7 @@ conditions.is_low_salience = isLowSalience(masterMask);
 conditions.is_face_target = isFaceTarget(masterMask);
 conditions.is_nonface_target = isNonfaceTarget(masterMask);
 conditions.is_image_target = is_image_target(masterMask);
+conditions.is_bullseye_target = is_bullseye_target(masterMask);
 conditions.is_high_probability = isHighProbability(masterMask);
 conditions.is_low_probability = isLowProbability(masterMask);
 
@@ -449,13 +474,13 @@ identity_factor(trialInfo.stimType > 2) = {'bullseye'};
 conditions.factors.identity = identity_factor(masterMask);
 
 % Salience Factor
-salience_factor = cell(size(masterMask));
-salience_factor(isHighSalience) = {'high'};
-salience_factor(isLowSalience) = {'low'};
-
-% 'neutral' corresponds to bullseye trials (not an image)
-salience_factor(is_image_target) = {'neutral'};
-conditions.factors.salience = salience_factor(masterMask);
+saliency_factor = cell(size(masterMask));
+saliency_factor(isHighSalience) = {'high'};
+saliency_factor(isLowSalience) = {'low'};
+% For image trials, saliency is not a factor, so we can mark it
+% as 'neutral' or NaN. For bullseye trials, it is a key factor.
+saliency_factor(is_image_target) = {'neutral'};
+conditions.factors.saliency = saliency_factor(masterMask);
 
 % Reward Factor
 reward_factor = cell(size(masterMask));
