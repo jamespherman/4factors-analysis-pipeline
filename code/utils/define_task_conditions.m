@@ -113,7 +113,7 @@ condition_defs.diagnostic_plots = diag_plots;
 condition_defs.anova_plan.run = true;
 condition_defs.anova_plan.event = 'targetOn';
 condition_defs.anova_plan.factors = ...
-    {'reward', 'saliency', 'identity', 'probability'};
+    {'reward', 'salience', 'identity', 'probability'};
 condition_defs.anova_plan.trial_mask = 'is_contralateral_target';
 
 % G. Behavioral Analysis Plan
@@ -393,8 +393,8 @@ end
 
 % --- The Four Factors ---
 % 1. Reward
-isHighReward = (trialInfo.reward == 2);
-isLowReward = (trialInfo.reward == 1);
+isHighReward = (trialInfo.rewardDuration > 200);
+isLowReward = (trialInfo.rewardDuration < 200);
 
 % 2. Salience
 isHighSalience = (trialInfo.salience == 2);
@@ -448,13 +448,14 @@ identity_factor(trialInfo.stimType == 2) = {'nonface'};
 identity_factor(trialInfo.stimType > 2) = {'bullseye'};
 conditions.factors.identity = identity_factor(masterMask);
 
-% Saliency Factor
-saliency_factor = cell(size(masterMask));
-saliency_factor(isHighSalience) = {'high'};
-saliency_factor(isLowSalience) = {'low'};
+% Salience Factor
+salience_factor = cell(size(masterMask));
+salience_factor(isHighSalience) = {'high'};
+salience_factor(isLowSalience) = {'low'};
+
 % 'neutral' corresponds to bullseye trials (not an image)
-saliency_factor(~is_image_target) = {'neutral'};
-conditions.factors.saliency = saliency_factor(masterMask);
+salience_factor(is_image_target) = {'neutral'};
+conditions.factors.salience = salience_factor(masterMask);
 
 % Reward Factor
 reward_factor = cell(size(masterMask));

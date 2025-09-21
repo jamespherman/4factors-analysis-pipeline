@@ -83,6 +83,7 @@ trial_mask = conditions.(behavior_plan_item.trial_mask);
 % Dependent Variable
 tbl = table(dv(trial_mask)', 'VariableNames', {'DV'});
 
+try
 % Independent Variables (Factors)
 factors = behavior_plan_item.factors;
 for i = 1:length(factors)
@@ -92,6 +93,9 @@ for i = 1:length(factors)
     % can apply the analysis-specific `trial_mask` to it.
     factor_data = conditions.factors.(factor_name);
     tbl.(factor_name) = categorical(factor_data(trial_mask));
+end
+catch me
+    keyboard
 end
 
 % Random Effect (Session ID)
