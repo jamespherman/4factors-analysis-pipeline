@@ -33,9 +33,16 @@ function [conditions, condition_defs] = define_task_conditions(varargin)
 % main pipeline script, `run_4factors_analysis.m`, to determine
 % which analyses to run.
 
-% A. Alignment Events
-condition_defs.alignment_events = {'fixOn', 'targetOn', 'fixOff', ...
+% A. Events and Field Names
+% The 'events' field lists all unique event names that the core data
+% preparation script should look for.
+condition_defs.events = {'fixOn', 'targetOn', 'fixOff', ...
     'saccadeOnset', 'reward'};
+
+% The 'event_field_names' field specifies which struct fields in the
+% analysis plans contain event names. This allows for centralized
+% control over event discovery.
+condition_defs.event_field_names = {'event', 'train_event', 'test_event'};
 
 % B. Canonical Names for Condition Masks
 % These are the building blocks for the analysis plans below.
