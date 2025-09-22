@@ -168,7 +168,7 @@ condition_defs.behavior_plan(6).trial_mask = ...
 
 % H1. Training Plan
 % Defines all classifiers to be trained.
-training_plan = struct('model_tag', {}, 'align_event', {}, ...
+training_plan = struct('model_tag', {}, 'event', {}, ...
                        'time_window', {}, 'cond1', {}, 'cond2', {}, ...
                        'trial_mask', {});
 factors = {'reward', 'salience', 'identity', 'probability', 'spatial'};
@@ -191,7 +191,7 @@ for i = 1:length(factors)
             tag_factor_name = 'Spatial';
         end
         entry.model_tag = sprintf('%s_%s', tag_factor_name, epoch_name);
-        entry.align_event = epoch_details.event;
+        entry.event = epoch_details.event;
         entry.time_window = epoch_details.window;
         entry.cond1 = conds{1};
         entry.cond2 = conds{2};
@@ -210,8 +210,8 @@ condition_defs.decoding_plan.training_plan = training_plan;
 % Defines all generalization tests to be performed.
 testing_plan = struct('test_name', {}, 'type', {}, ...
                       'train_model_tag', {}, 'test_cond1', {}, ...
-                      'test_cond2', {}, 'align_event', {}, ...
-                      'time_window', {}, 'test_align_event', {}, ...
+                      'test_cond2', {}, 'event', {}, ...
+                      'time_window', {}, 'train_event', {}, 'test_event', {}, ...
                       'test_time_window', {}, 'trial_mask', {});
 
 % --- Cross-Factor Tests ---
@@ -235,10 +235,11 @@ for i = 1:length(cross_factors)
                 condition_defs.condition_masks.(lower(test_factor));
             entry.test_cond1 = test_conds{1};
             entry.test_cond2 = test_conds{2};
-            entry.align_event = epoch_details.event;
+            entry.event = epoch_details.event;
             entry.time_window = epoch_details.window;
             % Fields for cross-time, leave empty
-            entry.test_align_event = '';
+            entry.train_event = '';
+            entry.test_event = '';
             entry.test_time_window = [];
             if strcmp(train_factor, 'Identity') || ...
                strcmp(test_factor, 'Identity')
@@ -262,12 +263,14 @@ for i = 1:length(main_factors)
     entry.test_name = sprintf('%s_Vis_x_Sac', factor);
     entry.type = 'cross_time';
     entry.train_model_tag = sprintf('%s_Visual', factor);
-    entry.test_align_event = epoch_defs.Saccade.event;
+    train_item_idx = find(strcmp({training_plan.model_tag}, entry.train_model_tag));
+    entry.train_event = training_plan(train_item_idx).event;
+    entry.test_event = epoch_defs.Saccade.event;
     entry.test_time_window = epoch_defs.Saccade.window;
     entry.test_cond1 = factor_conds{1};
     entry.test_cond2 = factor_conds{2};
     % Fields for cross-factor, leave empty
-    entry.align_event = '';
+    entry.event = '';
     entry.time_window = [];
     if strcmp(factor, 'Identity')
         entry.trial_mask = ...
@@ -281,12 +284,14 @@ for i = 1:length(main_factors)
     entry.test_name = sprintf('%s_Sac_x_Vis', factor);
     entry.type = 'cross_time';
     entry.train_model_tag = sprintf('%s_Saccade', factor);
-    entry.test_align_event = epoch_defs.Visual.event;
+    train_item_idx = find(strcmp({training_plan.model_tag}, entry.train_model_tag));
+    entry.train_event = training_plan(train_item_idx).event;
+    entry.test_event = epoch_defs.Visual.event;
     entry.test_time_window = epoch_defs.Visual.window;
     entry.test_cond1 = factor_conds{1};
     entry.test_cond2 = factor_conds{2};
     % Fields for cross-factor, leave empty
-    entry.align_event = '';
+    entry.event = '';
     entry.time_window = [];
     if strcmp(factor, 'Identity')
         entry.trial_mask = ...
@@ -309,9 +314,10 @@ for i = 1:length(training_plan)
     % --- Fill in dummy values for unused fields ---
     entry.test_cond1 = '';
     entry.test_cond2 = '';
-    entry.align_event = '';
+    entry.event = '';
     entry.time_window = [];
-    entry.test_align_event = '';
+    entry.train_event = '';
+    entry.test_event = '';
     entry.test_time_window = [];
     entry.trial_mask = '';
     testing_plan(end+1) = entry;

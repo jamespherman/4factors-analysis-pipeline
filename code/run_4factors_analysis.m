@@ -85,12 +85,17 @@ for i = 1:height(manifest)
     % --- Dynamically determine a proxy event for checks ---
     all_events = {};
     plan_fields = fieldnames(analysis_plan);
+    event_field_names = {'event', 'train_event', 'test_event'};
     for i_field = 1:length(plan_fields)
         sub_plan = analysis_plan.(plan_fields{i_field});
         if isstruct(sub_plan)
             for j = 1:length(sub_plan)
-                if isfield(sub_plan(j), 'event')
-                    all_events{end+1} = sub_plan(j).event;
+                for k = 1:length(event_field_names)
+                    field_name = event_field_names{k};
+                    if isfield(sub_plan(j), field_name) && ...
+                       ~isempty(sub_plan(j).(field_name))
+                        all_events{end+1} = sub_plan(j).(field_name);
+                    end
                 end
             end
         end
@@ -304,12 +309,17 @@ for i = 1:height(manifest)
         % Dynamically generate the list of required alignment events from the plan.
         all_events_prep = {};
         plan_fields_prep = fieldnames(analysis_plan_for_prep);
+        event_field_names_prep = {'event', 'train_event', 'test_event'};
         for i_field = 1:length(plan_fields_prep)
             sub_plan = analysis_plan_for_prep.(plan_fields_prep{i_field});
             if isstruct(sub_plan)
                 for j = 1:length(sub_plan)
-                    if isfield(sub_plan(j), 'event')
-                        all_events_prep{end+1} = sub_plan(j).event;
+                    for k = 1:length(event_field_names_prep)
+                        field_name = event_field_names_prep{k};
+                        if isfield(sub_plan(j), field_name) && ...
+                           ~isempty(sub_plan(j).(field_name))
+                            all_events_prep{end+1} = sub_plan(j).(field_name);
+                        end
                     end
                 end
             end

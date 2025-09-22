@@ -21,7 +21,7 @@
 %   training_plan_item: A single struct from the analysis plan, defining
 %                       the model to be trained. It must contain:
 %                       - .model_tag: A unique identifier for the model.
-%                       - .align_event: Event to align data to.
+%                       - .event: Event to align data to.
 %                       - .time_window: [1x2] time window for features.
 %                       - .cond1, .cond2: Conditions to decode.
 %                       - .trial_mask: Mask for selecting trials.
@@ -52,9 +52,9 @@ addpath(fullfile(script_dir, 'utils'));
 % Extract feature matrix (X) and label vector (Y) for training.
 
 % Select the binned firing rates for the correct alignment event
-align_event = training_plan_item.align_event;
-binned_rates = core_data.(align_event).rates;
-time_vector = core_data.(align_event).time_vector;
+event = training_plan_item.event;
+binned_rates = core_data.spikes.(event).rates;
+time_vector = core_data.spikes.(event).time_vector;
 
 % Identify time bins within the specified time_window
 time_window = training_plan_item.time_window;
