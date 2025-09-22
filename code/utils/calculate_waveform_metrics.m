@@ -17,7 +17,7 @@ function metrics = calculate_waveform_metrics(waveform, fs)
 %              - peak_idx: The sample index of the peak.
 %              - trough_idx: The sample index of the trough.
 %
-
+try
 % Ensure waveform is a row or column vector
 if ~isvector(waveform)
     error('Input waveform must be a vector.');
@@ -63,5 +63,7 @@ metrics.peak_val = peak_val;
 metrics.trough_val = trough_val;
 metrics.peak_idx = peak_idx;
 metrics.trough_idx = trough_idx;
-
+catch me
+    keyboard
+end
 end

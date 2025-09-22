@@ -31,10 +31,12 @@ all_spike_clusters = session_data.spikes.clusters;
 
 % --- Task-Specific Trial Selection ---
 % Identify trials belonging to the 'tokens' task.
-tokens_trial_indices = find(session_data.trialInfo.taskCode == codes.uniqueTaskCode_tokens);
+tokens_trial_indices = find(session_data.trialInfo.taskCode == ...
+    codes.uniqueTaskCode_tokens);
 
 if isempty(tokens_trial_indices)
-    fprintf("Warning in calculate_baseline_fr: No 'tokens' task trials found.\n");
+    fprintf("Warning in calculate_baseline_fr: No 'tokens' task " + ...
+        "trials found.\n");
     baseline_frs = zeros(nNeurons, 1);
     return;
 end
@@ -59,21 +61,28 @@ for i_neuron = 1:nNeurons
         trial_start_time = session_data.eventTimes.trialBegin(trial_idx);
 
         % Convert event times to trial-relative time for comparison.
-        % CUE_ON and reward are on the master clock; pdsOutcomeOn is already trial-relative.
-        cue_on_relative = session_data.eventTimes.CUE_ON(trial_idx) - trial_start_time;
-        reward_relative = session_data.eventTimes.reward(trial_idx) - trial_start_time;
-        pds_outcome_relative = session_data.eventTimes.pdsOutcomeOn(trial_idx);
+        % CUE_ON and reward are on the master clock; pdsOutcomeOn is 
+        % already trial-relative.
+        cue_on_relative = session_data.eventTimes.CUE_ON(trial_idx) - ...
+        trial_start_time;
+        reward_relative = session_data.eventTimes.reward(trial_idx) - ...
+            trial_start_time;
+        pds_outcome_relative = session_data.eventTimes.pdsOutcomeOn(...
+            trial_idx);
 
         % Find the earliest positive event time.
-        event_times = [cue_on_relative, reward_relative, pds_outcome_relative];
+        event_times = [cue_on_relative, reward_relative, ...
+            pds_outcome_relative];
         positive_event_times = event_times(event_times > 0);
 
         if isempty(positive_event_times)
-            continue; % Skip trial if no valid positive event time is found.
+            continue; % Skip trial if no valid positive event time 
+            % is found.
         end
 
         baseline_end_time = min(positive_event_times);
-        baseline_duration = baseline_end_time; % Starts from 0 (trial_start_time)
+        baseline_duration = baseline_end_time; % Starts from 0 
+        % (trial_start_time)
 
         if baseline_duration <= 0
             continue; % Skip if baseline duration is not positive.
@@ -84,7 +93,8 @@ for i_neuron = 1:nNeurons
         end_time_abs = trial_start_time + baseline_duration;
 
         % Count spikes within this trial's baseline window.
-        spike_count = nnz(neuron_spike_times >= start_time_abs & neuron_spike_times < end_time_abs);
+        spike_count = nnz(neuron_spike_times >= start_time_abs & ...
+            neuron_spike_times < end_time_abs);
 
         total_spike_count_per_neuron(i_neuron) = total_spike_count_per_neuron(i_neuron) + spike_count;
         total_baseline_duration_per_neuron(i_neuron) = total_baseline_duration_per_neuron(i_neuron) + baseline_duration;

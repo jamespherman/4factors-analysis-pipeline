@@ -54,8 +54,10 @@ for i = 1:height(manifest)
         session_id));
 
     % --- Read-Cache Logic: Prioritize Local Processed Data ---
-    local_processed_dir = fullfile(project_root, 'data', 'processed', session_id);
-    local_session_data_path = fullfile(local_processed_dir, [session_id, '_session_data.mat']);
+    local_processed_dir = fullfile(project_root, 'data', 'processed', ...
+        session_id);
+    local_session_data_path = fullfile(local_processed_dir, ...
+        [session_id, '_session_data.mat']);
 
     if exist(local_session_data_path, 'file')
         giveFeed(sprintf('Loading cached data for %s...', session_id));
@@ -93,13 +95,25 @@ for i = 1:height(manifest)
     if ~isfield(session_data, 'metrics')
         giveFeed('Metrics field not found. Calculating on-the-fly...');
 
-        % Calculate baseline firing rate and waveform metrics
+        % Calculate baseline firing rate and store:
         baseline_fr = calculate_baseline_fr(session_data);
-        waveform_metrics = calculate_waveform_metrics(session_data);
-
-        % Store the new metrics in the session_data struct
         session_data.metrics.baseline_fr = baseline_fr;
-        session_data.metrics.waveform_metrics = waveform_metrics;
+
+        % Calculate waveform metrics and add to session_data
+        nClusters = height(session_data.spikes.cluster_info.cluster_id);
+        for i_cluster = 1:nClusters
+
+            % get current unit's multi-channel waveform:
+            mean_waveform = session_data.spikes.wfMeans{i_cluster};
+
+            % find channel with max variance:
+            [~,max_var_chan] = max(var(mean_waveform,[],2));
+
+            % Note: Assuming a sampling rate of 30000 Hz
+            session_data.metrics.wf_metrics(i_cluster, 1) = ...
+                calculate_waveform_metrics(mean_waveform(...
+                max_var_chan,:), 30000);
+        end
 
         % Mark the data as updated to ensure it gets saved
         data_updated = true;
@@ -170,8 +184,9 @@ for i = 1:height(manifest)
     if ~isempty(event_proxy)
         for j = 1:length(analysis_plan.baseline_plan)
             comp_name = analysis_plan.baseline_plan(j).name;
-            path_to_check = fullfile('analysis', 'baseline_comparison', event_proxy, comp_name);
-            S = substruct('.', strsplit(path_to_check, '/'));
+            path_to_check = fullfile('analysis', 'baseline_comparison', ...
+                event_proxy, comp_name);
+            S = substruct('.', strsplit(path_to_check, filesep));
             is_missing = false;
             try
                 subsref(session_data, S);
@@ -187,8 +202,9 @@ for i = 1:height(manifest)
     % B. ROC Comparison Analyses
     for j = 1:length(analysis_plan.roc_plan)
         comp = analysis_plan.roc_plan(j);
-        path_to_check = fullfile('analysis', 'roc_comparison', comp.event, comp.name);
-        S = substruct('.', strsplit(path_to_check, '/'));
+        path_to_check = fullfile('analysis', 'roc_comparison', ...
+            comp.event, comp.name);
+        S = substruct('.', strsplit(path_to_check, filesep));
         is_missing = false;
         try
             subsref(session_data, S);
@@ -224,8 +240,9 @@ for i = 1:height(manifest)
     if isfield(analysis_plan, 'behavior_plan')
         for j = 1:length(analysis_plan.behavior_plan)
             analysis_name = analysis_plan.behavior_plan(j).name;
-            path_to_check = fullfile('analysis', 'behavioral_results', analysis_name);
-            S = substruct('.', strsplit(path_to_check, '/'));
+            path_to_check = fullfile('analysis', 'behavioral_results', ...
+                analysis_name);
+            S = substruct('.', strsplit(path_to_check, filesep));
             is_missing = false;
             try
                 subsref(session_data, S);
@@ -240,21 +257,26 @@ for i = 1:height(manifest)
 
     % E. Population Decoding Analyses
     if isfield(analysis_plan, 'decoding_plan')
-        % The execution has two potential steps, which are counted independently.
+        % The execution has two potential steps, which are counted 
+        % independently.
 
         % Stage 1: Count training step
-        needs_training = force_rerun.analyses || ~isfield(session_data, 'analysis') || ~isfield(session_data.analysis, 'population_decoding');
+        needs_training = force_rerun.analyses || ~isfield(session_data, ...
+            'analysis') || ~isfield(session_data.analysis, ...
+            'population_decoding');
         if needs_training
             n_total_steps = n_total_steps + 1;
         end
 
         % Stage 2: Count testing step
         is_any_test_missing = false;
-        if isfield(session_data, 'analysis') && isfield(session_data.analysis, 'population_decoding')
+        if isfield(session_data, 'analysis') && isfield(...
+                session_data.analysis, 'population_decoding')
             testing_plan = analysis_plan.decoding_plan.testing_plan;
             for j = 1:length(testing_plan)
                 test_name = testing_plan(j).test_name;
-                if ~isfield(session_data.analysis.population_decoding, test_name)
+                if ~isfield(session_data.analysis.population_decoding, ...
+                        test_name)
                     is_any_test_missing = true;
                     break;
                 end
@@ -287,7 +309,8 @@ for i = 1:height(manifest)
 
         session_data.metadata.unique_id = session_id;
         if strcmp(session_data.metadata.brain_area, 'SNc')
-            selected_neurons = screen_da_neurons(session_data, session_id, project_root);
+            selected_neurons = screen_da_neurons(session_data, ...
+                session_id, project_root);
         elseif strcmp(session_data.metadata.brain_area, 'SC')
             [selected_neurons, sig_epoch_comp, scSide] = ...
                 screen_sc_neurons(session_data, project_root);
@@ -295,7 +318,8 @@ for i = 1:height(manifest)
             session_data.analysis.sig_epoch_comparison = sig_epoch_comp;
         else
             warning('run_4factors_analysis:unknownSessionType', ...
-                'Unknown brain_area ''%s'' for session %s. Cannot screen neurons.', ...
+                ['Unknown brain_area ''%s'' for session %s. Cannot ' ...
+                'screen neurons.'], ...
                 session_data.metadata.brain_area, session_id);
             continue;
         end
@@ -347,7 +371,8 @@ for i = 1:height(manifest)
         % analysis plan earlier in the script, is used here. This ensures
         % that the data preparation is always aligned with the full scope
         % of events required by all defined analyses.
-        core_data = prepare_core_data(session_data, selected_neurons, alignment_events);
+        core_data = prepare_core_data(session_data, selected_neurons, ...
+            alignment_events);
         session_data.analysis.core_data = core_data;
 
         data_updated = true; % Mark data as updated
@@ -368,8 +393,9 @@ for i = 1:height(manifest)
 
             % Standardized Idempotency Check
             is_missing = false;
-            path_to_check = fullfile('analysis', 'baseline_comparison', event_proxy, comp_name);
-            S = substruct('.', strsplit(path_to_check, '/'));
+            path_to_check = fullfile('analysis', 'baseline_comparison', ...
+                event_proxy, comp_name);
+            S = substruct('.', strsplit(path_to_check, filesep));
             try
                 subsref(session_data, S);
             catch
@@ -381,7 +407,8 @@ for i = 1:height(manifest)
                 fprintf(['\n--- Session %s: Step %d/%d: Baseline ' ...
                     'Comparison for %s ---\n'], unique_id, step_counter, ...
                     n_total_steps, comp_name);
-                giveFeed(sprintf('--> Running Baseline Comparison: %s', comp_name));
+                giveFeed(sprintf('--> Running Baseline Comparison: %s', ...
+                    comp_name));
 
                 result_by_event = analyze_baseline_comparison(...
                     core_data, conditions, 'condition', comp_name);
@@ -389,7 +416,8 @@ for i = 1:height(manifest)
                 event_names = fieldnames(result_by_event);
                 for k = 1:length(event_names)
                     event_name = event_names{k};
-                    session_data.analysis.baseline_comparison.(event_name).(comp_name) = ...
+                    session_data.analysis.baseline_comparison.(...
+                        event_name).(comp_name) = ...
                         result_by_event.(event_name).(comp_name);
                 end
                 data_updated = true;
@@ -403,8 +431,9 @@ for i = 1:height(manifest)
 
         % Standardized Idempotency Check
         is_missing = false;
-        path_to_check = fullfile('analysis', 'roc_comparison', comp.event, comp.name);
-        S = substruct('.', strsplit(path_to_check, '/'));
+        path_to_check = fullfile('analysis', 'roc_comparison', ...
+            comp.event, comp.name);
+        S = substruct('.', strsplit(path_to_check, filesep));
         try
             subsref(session_data, S);
         catch
@@ -418,8 +447,10 @@ for i = 1:height(manifest)
                 n_total_steps, comp.name);
             giveFeed(sprintf('--> Running ROC Comparison: %s', comp.name));
 
-            result = analyze_roc_comparison(core_data, conditions, 'comparison', comp);
-            session_data.analysis.roc_comparison.(comp.event).(comp.name) = result;
+            result = analyze_roc_comparison(core_data, conditions, ...
+                'comparison', comp);
+            session_data.analysis.roc_comparison.(comp.event).(...
+                comp.name) = result;
             data_updated = true;
         end
     end
@@ -442,9 +473,11 @@ for i = 1:height(manifest)
 
             if is_missing || force_rerun.analyses
                 step_counter = step_counter + 1;
-                fprintf('\n--- Session %s: Step %d/%d: N-way ANOVA for %s ---\n', ...
+                fprintf(['\n--- Session %s: Step %d/%d: N-way ANOVA ' ...
+                    '                    for %s ---\n'], ...
                     unique_id, step_counter, n_total_steps, analysis_name);
-                giveFeed(sprintf('--> Running N-way ANOVA: %s', analysis_name));
+                giveFeed(sprintf('--> Running N-way ANOVA: %s', ...
+                    analysis_name));
                 % Pass the specific plan item to the analysis function
                 session_data = analyze_anova(session_data, core_data, ...
                     conditions, current_plan_item);
@@ -462,8 +495,9 @@ for i = 1:height(manifest)
 
             % Standardized Idempotency Check
             is_missing = false;
-            path_to_check = fullfile('analysis', 'behavioral_results', analysis_name);
-            S = substruct('.', strsplit(path_to_check, '/'));
+            path_to_check = fullfile('analysis', ...
+                'behavioral_results', analysis_name);
+            S = substruct('.', strsplit(path_to_check, filesep));
             try
                 subsref(session_data, S);
             catch
@@ -475,10 +509,13 @@ for i = 1:height(manifest)
                 fprintf(['\n--- Session %s: Step %d/%d: Behavioral ' ...
                     'Analysis for %s ---\n'], unique_id, step_counter, ...
                     n_total_steps, analysis_name);
-                giveFeed(sprintf('--> Running Behavioral Analysis: %s', analysis_name));
+                giveFeed(sprintf('--> Running Behavioral Analysis: %s', ...
+                    analysis_name));
 
-                result = analyze_behavior(session_data, conditions, plan_item);
-                session_data.analysis.behavioral_results.(analysis_name) = result;
+                result = analyze_behavior(session_data, conditions, ...
+                    plan_item);
+                session_data.analysis.behavioral_results.(...
+                    analysis_name) = result;
                 data_updated = true;
             end
         end
@@ -493,13 +530,16 @@ for i = 1:height(manifest)
         if force_rerun.analyses
             run_decoding_suite = true;
         else
-            if ~isfield(session_data, 'analysis') || ~isfield(session_data.analysis, 'population_decoding')
+            if ~isfield(session_data, 'analysis') || ~isfield(...
+                    session_data.analysis, 'population_decoding')
                 run_decoding_suite = true;
             else
                 testing_plan = analysis_plan.decoding_plan.testing_plan;
                 for j = 1:length(testing_plan)
                     test_name = testing_plan(j).test_name;
-                    if ~isfield(session_data.analysis.population_decoding, test_name)
+                    if ~isfield(...
+                            session_data.analysis.population_decoding, ...
+                            test_name)
                         run_decoding_suite = true;
                         break;
                     end
@@ -534,8 +574,10 @@ for i = 1:height(manifest)
             testing_plan = analysis_plan.decoding_plan.testing_plan;
             for j = 1:length(testing_plan)
                 testing_item = testing_plan(j);
-                results = test_decoder(trained_models, conditions, core_data, testing_item);
-                session_data.analysis.population_decoding.(testing_item.test_name) = results;
+                results = test_decoder(trained_models, conditions, ...
+                    core_data, testing_item);
+                session_data.analysis.population_decoding.(...
+                    testing_item.test_name) = results;
                 data_updated = true;
             end
             giveFeed('--> Model testing complete.');
@@ -546,7 +588,7 @@ for i = 1:height(manifest)
 
     % --- Save Updated Data ---
     if data_updated
-        giveFeed('Data was updated, saving to local processed directory...');
+        giveFeed('Data was updated, saving to local processed directory.');
         if ~exist(local_processed_dir, 'dir')
             mkdir(local_processed_dir);
         end
@@ -565,8 +607,9 @@ for i = 1:height(manifest)
     if is_analysis_complete && ~isempty(event_proxy)
         for j = 1:length(analysis_plan.baseline_plan)
             comp_name = analysis_plan.baseline_plan(j).name;
-            path_to_check = fullfile('analysis', 'baseline_comparison', event_proxy, comp_name);
-            S = substruct('.', strsplit(path_to_check, '/'));
+            path_to_check = fullfile('analysis', 'baseline_comparison', ...
+                event_proxy, comp_name);
+            S = substruct('.', strsplit(path_to_check, filesep));
             try
                 subsref(session_data, S);
             catch
@@ -579,8 +622,9 @@ for i = 1:height(manifest)
     if is_analysis_complete
         for j = 1:length(analysis_plan.roc_plan)
             comp = analysis_plan.roc_plan(j);
-            path_to_check = fullfile('analysis', 'roc_comparison', comp.event, comp.name);
-            S = substruct('.', strsplit(path_to_check, '/'));
+            path_to_check = fullfile('analysis', 'roc_comparison', ...
+                comp.event, comp.name);
+            S = substruct('.', strsplit(path_to_check, filesep));
             try
                 subsref(session_data, S);
             catch
@@ -610,8 +654,9 @@ for i = 1:height(manifest)
     if is_analysis_complete && isfield(analysis_plan, 'behavior_plan')
         for j = 1:length(analysis_plan.behavior_plan)
             analysis_name = analysis_plan.behavior_plan(j).name;
-            path_to_check = fullfile('analysis', 'behavioral_results', analysis_name);
-            S = substruct('.', strsplit(path_to_check, '/'));
+            path_to_check = fullfile('analysis', 'behavioral_results', ...
+                analysis_name);
+            S = substruct('.', strsplit(path_to_check, filesep));
             try
                 subsref(session_data, S);
             catch
@@ -625,8 +670,9 @@ for i = 1:height(manifest)
         testing_plan = analysis_plan.decoding_plan.testing_plan;
         for j = 1:length(testing_plan)
             test_name = testing_plan(j).test_name;
-            path_to_check = fullfile('analysis', 'population_decoding', test_name);
-            S = substruct('.', strsplit(path_to_check, '/'));
+            path_to_check = fullfile('analysis', 'population_decoding', ...
+                test_name);
+            S = substruct('.', strsplit(path_to_check, filesep));
             try
                 subsref(session_data, S);
             catch
