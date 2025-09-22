@@ -57,15 +57,15 @@ switch testing_plan_item.type
     case {'cross_factor', 'cross_time'}
         %% Data Preparation for Generalization Tests
         if strcmp(testing_plan_item.type, 'cross_time')
-            align_event = testing_plan_item.test_align_event;
+            event = testing_plan_item.test_event;
             time_window = testing_plan_item.test_time_window;
-        else
-            align_event = testing_plan_item.align_event;
+        else % 'cross_factor'
+            event = testing_plan_item.event;
             time_window = testing_plan_item.time_window;
         end
 
-        binned_rates = core_data.(align_event).rates;
-        time_vector = core_data.(align_event).time_vector;
+        binned_rates = core_data.spikes.(event).rates;
+        time_vector = core_data.spikes.(event).time_vector;
 
         time_bin_indices = time_vector >= time_window(1) & ...
                            time_vector <= time_window(2);

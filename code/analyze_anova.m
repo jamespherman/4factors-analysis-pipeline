@@ -50,7 +50,7 @@ function session_data = analyze_anova(session_data, core_data, ...
     %% Prepare Data for ANOVA
     if ~isfield(core_data.spikes, event_name)
         warning('analyze_anova:eventNotFound', ...
-            'Event ''%s'' not found in core_data. Skipping.', event_name);
+            'Event ''%s'' not found in core_data.spikes. Skipping.', event_name);
         return;
     end
     event_data = core_data.spikes.(event_name);
