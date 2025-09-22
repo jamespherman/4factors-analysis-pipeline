@@ -103,7 +103,7 @@ for i_session = 1:nSessions
     brain_area = complete_sessions.brain_area{i_session};
     giveFeed(sprintf('Processing session %d/%d: %s', i_session, nSessions, session_id));
 
-    session_data_path = fullfile(findOneDrive(), 'Neuronal Data Analysis', ...
+    session_data_path = fullfile(project_root, 'data', 'processed', ...
         session_id, [session_id '_session_data.mat']);
 
     if ~exist(session_data_path, 'file')

@@ -53,29 +53,58 @@ for i = 1:height(manifest)
     giveFeed(sprintf('--- Starting processing for session: %s ---', ...
         session_id));
 
-    one_drive_path = findOneDrive;
-    session_data_path = fullfile(one_drive_path, ...
-        'Neuronal Data Analysis', session_id, [session_id ...
-        '_session_data.mat']);
+    % --- Read-Cache Logic: Prioritize Local Processed Data ---
+    local_processed_dir = fullfile(project_root, 'data', 'processed', session_id);
+    local_session_data_path = fullfile(local_processed_dir, [session_id, '_session_data.mat']);
 
-    if ~exist(session_data_path, 'file')
-        warning('run_4factors_analysis:sessionDataNotFound', ...
-            'session_data.mat not found for %s. Skipping.', ...
-            session_id);
-        continue;
+    if exist(local_session_data_path, 'file')
+        giveFeed(sprintf('Loading cached data for %s...', session_id));
+        load(local_session_data_path, 'session_data');
+        giveFeed('Cached data loaded.');
+    else
+        % If local file doesn't exist, load from OneDrive
+        one_drive_path = findOneDrive;
+        source_session_data_path = fullfile(one_drive_path, ...
+            'Neuronal Data Analysis', session_id, [session_id ...
+            '_session_data.mat']);
+
+        if ~exist(source_session_data_path, 'file')
+            warning('run_4factors_analysis:sessionDataNotFound', ...
+                'session_data.mat not found for %s. Skipping.', ...
+                session_id);
+            continue;
+        end
+
+        giveFeed(sprintf('Loading source data for %s...', session_id));
+        load(source_session_data_path, 'session_data');
+        giveFeed('Source data loaded.');
     end
-
-    % tell user data is being loaded, then load data, then tell user data
-    % was loaded:
-    giveFeed(sprintf('Loading data for %s...', session_id));
-    load(session_data_path, 'session_data');
-    giveFeed('Data loaded.');
 
     % make sure we have all our metadata:
     session_data.metadata = table2struct(manifest(i,:));
 
     % assume that data has not been updated:
     data_updated = false;
+
+    % --- On-Demand Metrics Calculation ---
+    % If the session_data.metrics field is missing, compute it now. This
+    % is a forward-compatibility step to ensure older data files can be
+    % processed without manual intervention.
+    if ~isfield(session_data, 'metrics')
+        giveFeed('Metrics field not found. Calculating on-the-fly...');
+
+        % Calculate baseline firing rate and waveform metrics
+        baseline_fr = calculate_baseline_fr(session_data);
+        waveform_metrics = calculate_waveform_metrics(session_data);
+
+        % Store the new metrics in the session_data struct
+        session_data.metrics.baseline_fr = baseline_fr;
+        session_data.metrics.waveform_metrics = waveform_metrics;
+
+        % Mark the data as updated to ensure it gets saved
+        data_updated = true;
+        giveFeed('On-the-fly metrics calculation complete.');
+    end
 
     % --- Define Task Conditions for this session ---
     giveFeed('Defining task conditions...');
@@ -517,8 +546,11 @@ for i = 1:height(manifest)
 
     % --- Save Updated Data ---
     if data_updated
-        giveFeed('Data was updated, saving back to session_data.mat...');
-        save(session_data_path, 'session_data', '-v7.3');
+        giveFeed('Data was updated, saving to local processed directory...');
+        if ~exist(local_processed_dir, 'dir')
+            mkdir(local_processed_dir);
+        end
+        save(local_session_data_path, 'session_data', '-v7.3');
         giveFeed('Save complete.');
     else
         giveFeed(['No new analyses or processing were required for ' ...
