@@ -186,7 +186,7 @@ for i = 1:height(manifest)
             comp_name = analysis_plan.baseline_plan(j).name;
             path_to_check = fullfile('analysis', 'baseline_comparison', ...
                 event_proxy, comp_name);
-            S = substruct('.', strsplit(path_to_check, filesep));
+            S = substruct_from_path(path_to_check);
             is_missing = false;
             try
                 subsref(session_data, S);
@@ -204,7 +204,7 @@ for i = 1:height(manifest)
         comp = analysis_plan.roc_plan(j);
         path_to_check = fullfile('analysis', 'roc_comparison', ...
             comp.event, comp.name);
-        S = substruct('.', strsplit(path_to_check, filesep));
+        S = substruct_from_path(path_to_check);
         is_missing = false;
         try
             subsref(session_data, S);
@@ -221,8 +221,8 @@ for i = 1:height(manifest)
         for j = 1:length(analysis_plan.anova_plan)
             current_plan_item = analysis_plan.anova_plan(j);
             analysis_name = current_plan_item.name;
-            path_as_string = ['analysis.anova_results.' analysis_name];
-            S = substruct('.', strsplit(path_as_string, '.'));
+            path_to_check = fullfile('analysis', 'anova_results', analysis_name);
+            S = substruct_from_path(path_to_check);
             is_missing = false;
             try
                 subsref(session_data, S);
@@ -242,7 +242,7 @@ for i = 1:height(manifest)
             analysis_name = analysis_plan.behavior_plan(j).name;
             path_to_check = fullfile('analysis', 'behavioral_results', ...
                 analysis_name);
-            S = substruct('.', strsplit(path_to_check, filesep));
+            S = substruct_from_path(path_to_check);
             is_missing = false;
             try
                 subsref(session_data, S);
@@ -391,11 +391,11 @@ for i = 1:height(manifest)
         for j = 1:length(analysis_plan.baseline_plan)
             comp_name = analysis_plan.baseline_plan(j).name;
 
-            % Standardized Idempotency Check
+            % Use substruct_from_path for a robust idempotency check.
             is_missing = false;
             path_to_check = fullfile('analysis', 'baseline_comparison', ...
                 event_proxy, comp_name);
-            S = substruct('.', strsplit(path_to_check, filesep));
+            S = substruct_from_path(path_to_check);
             try
                 subsref(session_data, S);
             catch
@@ -429,11 +429,11 @@ for i = 1:height(manifest)
     for j = 1:length(analysis_plan.roc_plan)
         comp = analysis_plan.roc_plan(j);
 
-        % Standardized Idempotency Check
+        % Use substruct_from_path for a robust idempotency check.
         is_missing = false;
         path_to_check = fullfile('analysis', 'roc_comparison', ...
             comp.event, comp.name);
-        S = substruct('.', strsplit(path_to_check, filesep));
+        S = substruct_from_path(path_to_check);
         try
             subsref(session_data, S);
         catch
@@ -461,10 +461,10 @@ for i = 1:height(manifest)
             current_plan_item = analysis_plan.anova_plan(j);
             analysis_name = current_plan_item.name;
 
-            % Standardized Idempotency Check
+            % Use substruct_from_path for a robust idempotency check.
             is_missing = false;
-            path_as_string = ['analysis.anova_results.' analysis_name];
-            S = substruct('.', strsplit(path_as_string, '.'));
+            path_to_check = fullfile('analysis', 'anova_results', analysis_name);
+            S = substruct_from_path(path_to_check);
             try
                 subsref(session_data, S);
             catch
@@ -493,11 +493,11 @@ for i = 1:height(manifest)
             plan_item = analysis_plan.behavior_plan(j);
             analysis_name = plan_item.name;
 
-            % Standardized Idempotency Check
+            % Use substruct_from_path for a robust idempotency check.
             is_missing = false;
             path_to_check = fullfile('analysis', ...
                 'behavioral_results', analysis_name);
-            S = substruct('.', strsplit(path_to_check, filesep));
+            S = substruct_from_path(path_to_check);
             try
                 subsref(session_data, S);
             catch
@@ -609,7 +609,7 @@ for i = 1:height(manifest)
             comp_name = analysis_plan.baseline_plan(j).name;
             path_to_check = fullfile('analysis', 'baseline_comparison', ...
                 event_proxy, comp_name);
-            S = substruct('.', strsplit(path_to_check, filesep));
+            S = substruct_from_path(path_to_check);
             try
                 subsref(session_data, S);
             catch
@@ -624,7 +624,7 @@ for i = 1:height(manifest)
             comp = analysis_plan.roc_plan(j);
             path_to_check = fullfile('analysis', 'roc_comparison', ...
                 comp.event, comp.name);
-            S = substruct('.', strsplit(path_to_check, filesep));
+            S = substruct_from_path(path_to_check);
             try
                 subsref(session_data, S);
             catch
@@ -638,8 +638,8 @@ for i = 1:height(manifest)
         for j = 1:length(analysis_plan.anova_plan)
             current_plan_item = analysis_plan.anova_plan(j);
             analysis_name = current_plan_item.name;
-            path_as_string = ['analysis.anova_results.' analysis_name];
-            S = substruct('.', strsplit(path_as_string, '.'));
+            path_to_check = fullfile('analysis', 'anova_results', analysis_name);
+            S = substruct_from_path(path_to_check);
             try
                 subsref(session_data, S);
             catch
@@ -656,7 +656,7 @@ for i = 1:height(manifest)
             analysis_name = analysis_plan.behavior_plan(j).name;
             path_to_check = fullfile('analysis', 'behavioral_results', ...
                 analysis_name);
-            S = substruct('.', strsplit(path_to_check, filesep));
+            S = substruct_from_path(path_to_check);
             try
                 subsref(session_data, S);
             catch
@@ -672,7 +672,7 @@ for i = 1:height(manifest)
             test_name = testing_plan(j).test_name;
             path_to_check = fullfile('analysis', 'population_decoding', ...
                 test_name);
-            S = substruct('.', strsplit(path_to_check, filesep));
+            S = substruct_from_path(path_to_check);
             try
                 subsref(session_data, S);
             catch
