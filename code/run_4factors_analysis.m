@@ -82,12 +82,23 @@ for i = 1:height(manifest)
     conditions = define_task_conditions(session_data);
     giveFeed('Task conditions defined.');
 
-    % --- Dynamically determine a proxy event for checks ---
+    % --- Dynamically discover all events from the analysis plan ---
     all_events = {};
+    % 1. Add events from the top-level 'events' field, if it exists.
+    if isfield(analysis_plan, 'events') && ~isempty(analysis_plan.events)
+        all_events = [all_events, analysis_plan.events];
+    end
+    % 2. Discover events from sub-plans using the centralized field names.
     plan_fields = fieldnames(analysis_plan);
-    event_field_names = {'event', 'train_event', 'test_event'};
+    event_field_names = analysis_plan.event_field_names;
     for i_field = 1:length(plan_fields)
-        sub_plan = analysis_plan.(plan_fields{i_field});
+        sub_plan_name = plan_fields{i_field};
+        % Skip fields that are not analysis plans or already processed.
+        if any(strcmp(sub_plan_name, {'events', 'event_field_names'}))
+            continue;
+        end
+
+        sub_plan = analysis_plan.(sub_plan_name);
         if isstruct(sub_plan)
             for j = 1:length(sub_plan)
                 for k = 1:length(event_field_names)
@@ -303,31 +314,11 @@ for i = 1:height(manifest)
             '            Running prepare_core_data...']);
 
         % --- Integration of Analysis Plan for Data Prep ---
-        % Call define_task_conditions without arguments to get the plan.
-        [~, analysis_plan_for_prep] = define_task_conditions();
-
-        % Dynamically generate the list of required alignment events from the plan.
-        all_events_prep = {};
-        plan_fields_prep = fieldnames(analysis_plan_for_prep);
-        event_field_names_prep = {'event', 'train_event', 'test_event'};
-        for i_field = 1:length(plan_fields_prep)
-            sub_plan = analysis_plan_for_prep.(plan_fields_prep{i_field});
-            if isstruct(sub_plan)
-                for j = 1:length(sub_plan)
-                    for k = 1:length(event_field_names_prep)
-                        field_name = event_field_names_prep{k};
-                        if isfield(sub_plan(j), field_name) && ...
-                           ~isempty(sub_plan(j).(field_name))
-                            all_events_prep{end+1} = sub_plan(j).(field_name);
-                        end
-                    end
-                end
-            end
-        end
-        alignment_events_prep = unique(all_events_prep);
-
-        % Now call prepare_core_data with the dynamic events.
-        core_data = prepare_core_data(session_data, selected_neurons, alignment_events_prep);
+        % The 'alignment_events' variable, calculated dynamically from the
+        % analysis plan earlier in the script, is used here. This ensures
+        % that the data preparation is always aligned with the full scope
+        % of events required by all defined analyses.
+        core_data = prepare_core_data(session_data, selected_neurons, alignment_events);
         session_data.analysis.core_data = core_data;
 
         data_updated = true; % Mark data as updated
