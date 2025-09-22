@@ -9,6 +9,10 @@
 % This function relies on `define_task_conditions.m` to have already
 % generated the logical and categorical vectors in the `conditions` struct.
 %
+% The `trial_mask` in the `behavior_plan_item` can be a single string or a
+% cell array of strings. If it is a cell array, the masks are combined
+% with a logical AND.
+%
 % Author: Jules
 % Date: 2025-09-14
 %
@@ -24,6 +28,8 @@ function results = analyze_behavior(session_data, conditions, behavior_plan_item
 %                       categorical variables.
 %   behavior_plan_item: A single element from the analysis_plan.behavior_plan
 %                       struct array, defining the analysis to be run.
+%                       Its `trial_mask` field can be a string or a cell
+%                       array of strings.
 %
 % OUTPUTS:
 %   results:            An ANOVA table from the fitted LME model.
@@ -78,7 +84,17 @@ end
 % Get the logical trial mask for this specific analysis. This mask is a
 % subset of the master '4factors' mask, selecting for specific experiment
 % conditions (e.g., 'is_contralateral_target').
-trial_mask = conditions.(behavior_plan_item.trial_mask);
+trial_mask_name = behavior_plan_item.trial_mask;
+if iscell(trial_mask_name)
+    % If the mask is a cell array, combine the masks with a logical AND
+    trial_mask = true(height(session_data.trialInfo), 1); % Start with all true
+    for i = 1:length(trial_mask_name)
+        trial_mask = trial_mask & conditions.(trial_mask_name{i});
+    end
+else
+    % Otherwise, handle it as a single string
+    trial_mask = conditions.(trial_mask_name);
+end
 
 % Dependent Variable
 tbl = table(dv(trial_mask)', 'VariableNames', {'DV'});
