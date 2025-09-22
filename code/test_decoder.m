@@ -85,12 +85,12 @@ switch testing_plan_item.type
         end
 
         testing_mask = (cond1_mask | cond2_mask) & trial_mask;
-        X_test = X(testing_mask, :);
+        X_test = X(:, testing_mask)';
         Y_test = cond1_mask(testing_mask);
 
         %% Test Model and Calculate Accuracy
         Y_pred = predict(modelInfo.model, X_test);
-        n_correct = sum(Y_pred == Y_test);
+        n_correct = sum(Y_pred == Y_test(:));
         n_total = length(Y_test);
         [accuracy, accuracy_ci] = binofit(n_correct, n_total);
 
