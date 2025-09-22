@@ -15,6 +15,8 @@
 %                  a 'factors' sub-struct with categorical variables.
 %   anova_plan   - A struct defining ANOVA parameters, including the
 %                  alignment event, trial mask, and factors to test.
+%                  The 'trial_mask' can be a string or a cell array of
+%                  strings to combine multiple conditions.
 %
 % Output:
 %   session_data - Updated struct with time-resolved ANOVA results.
@@ -34,7 +36,6 @@ function session_data = analyze_anova(session_data, core_data, ...
 
     %% Unpack ANOVA Parameters
     event_name = anova_plan.event;
-    trial_mask_name = anova_plan.trial_mask;
     analysis_name = anova_plan.name; % e.g., 'anova_imagetrials'
 
     %% Initialize Results Structure
@@ -57,12 +58,37 @@ function session_data = analyze_anova(session_data, core_data, ...
     n_bins = length(time_vector);
 
     % Get the trial mask to select trials for the ANOVA
-    if ~isfield(conditions, trial_mask_name)
-        warning('analyze_anova:maskNotFound', ...
-            'Trial mask ''%s'' not found. Skipping.', trial_mask_name);
+    trial_mask_spec = anova_plan.trial_mask;
+    if ischar(trial_mask_spec)
+        trial_mask_spec = {trial_mask_spec};
+    end
+
+    if ~iscell(trial_mask_spec)
+        error('analyze_anova:invalidTrialMask', 'trial_mask must be a string or a cell array of strings.');
+    end
+
+    if isempty(trial_mask_spec)
+        warning('analyze_anova:emptyTrialMask', 'Trial mask spec is empty. Skipping.');
         return;
     end
-    trial_mask = conditions.(trial_mask_name);
+
+    first_mask_name = trial_mask_spec{1};
+    if ~isfield(conditions, first_mask_name)
+        warning('analyze_anova:maskNotFound', 'Trial mask ''%s'' not found. Skipping.', ...
+            first_mask_name);
+        return;
+    end
+    trial_mask = conditions.(first_mask_name);
+
+    for i = 2:length(trial_mask_spec)
+        mask_name = trial_mask_spec{i};
+        if ~isfield(conditions, mask_name)
+            warning('analyze_anova:maskNotFound', 'Trial mask ''%s'' not found. Skipping.', ...
+                mask_name);
+            return;
+        end
+        trial_mask = trial_mask & conditions.(mask_name);
+    end
 
     % Filter firing rates by the trial mask
     % This results in a [n_neurons x n_valid_trials x n_time_bins] matrix
