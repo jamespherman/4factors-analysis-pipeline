@@ -97,7 +97,8 @@ else
 end
 
 % Dependent Variable
-tbl = table(dv(trial_mask)', 'VariableNames', {'DV'});
+dvTemp = dv(trial_mask);
+tbl = table(dvTemp(:), 'VariableNames', {'DV'});
 
 try
 % Independent Variables (Factors)

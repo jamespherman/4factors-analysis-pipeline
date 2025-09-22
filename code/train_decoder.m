@@ -52,6 +52,7 @@ addpath(fullfile(script_dir, 'utils'));
 % Extract feature matrix (X) and label vector (Y) for training.
 
 % Select the binned firing rates for the correct alignment event
+try
 event = training_plan_item.event;
 binned_rates = core_data.spikes.(event).rates;
 time_vector = core_data.spikes.(event).time_vector;
@@ -60,6 +61,9 @@ time_vector = core_data.spikes.(event).time_vector;
 time_window = training_plan_item.time_window;
 time_bin_indices = time_vector >= time_window(1) & ...
                    time_vector <= time_window(2);
+catch me
+    keyboard
+end
 
 % Average firing rates across time bins for the feature matrix
 % The result is a [n_trials x n_neurons] matrix.
@@ -86,13 +90,13 @@ end
 training_mask = (cond1_mask | cond2_mask) & trial_mask;
 
 % Select the feature matrix and create the label vector
-X_train = X(training_mask, :);
+X_train = X(:, training_mask);
 Y_train = cond1_mask(training_mask);
 
 %% Train SVM Model
 % Train a ClassificationSVM model on the full prepared dataset.
 % A uniform prior is used to account for imbalanced trial counts.
-svm_model = fitcsvm(X_train, Y_train, 'Prior', 'uniform');
+svm_model = fitcsvm(X_train', Y_train(:), 'Prior', 'uniform');
 
 %% Package Output
 % Store the trained model and metadata in the output struct.
