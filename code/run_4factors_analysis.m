@@ -9,12 +9,15 @@
 % - Plan-Driven Execution: All analyses (Baseline Comparison, ROC, ANOVA,
 %   etc.) are executed based on the provided analysis_plan struct.
 % - Idempotency: The script performs comprehensive checks to determine if an
-%   analysis has already been completed. For event-based analyses like
-%   ANOVA, it ensures results exist for all required alignment events before
-%   skipping, preventing partial re-runs.
+%   analysis has already been completed. For event-based analyses (like
+%   ANOVA and ROC), it ensures results exist for all required alignment
+%   events before skipping, preventing partial re-runs.
 % - Correct Data Structuring: Saves analysis results in the precise
 %   nested structure required by the `aggregate_analysis_results.m` script,
 %   ensuring seamless data aggregation.
+% - Event-Agnostic ROC Analysis: The ROC analysis plan is event-agnostic,
+%   and this script correctly executes the analysis for each defined
+%   alignment event.
 %
 % Author: Jules
 % Date: 2025-09-23
@@ -234,18 +237,26 @@ for i = 1:height(manifest)
     end
 
     % B. ROC Comparison Analyses
+    % This analysis is event-agnostic in the plan. We check if the results
+    % for ANY alignment event are missing. If so, the entire comparison is
+    % marked as one step to be re-run for ALL events.
     for j = 1:length(analysis_plan.roc_plan)
         comp = analysis_plan.roc_plan(j);
-        path_to_check = fullfile('analysis', 'roc_comparison', ...
-            comp.event, comp.name);
-        S = substruct_from_path(path_to_check);
-        is_missing = false;
-        try
-            subsref(session_data, S);
-        catch
-            is_missing = true;
+        is_any_event_missing = false;
+        % Check each event required by the master plan
+        for k = 1:length(alignment_events)
+            event_name = alignment_events{k};
+            path_to_check = fullfile('analysis', 'roc_comparison', event_name, comp.name);
+            S = substruct_from_path(path_to_check);
+            try
+                subsref(session_data, S);
+            catch
+                is_any_event_missing = true;
+                break; % Found a missing event, no need to check others for this comp
+            end
         end
-        if is_missing || force_rerun.analyses
+
+        if is_any_event_missing || force_rerun.analyses
             n_total_steps = n_total_steps + 1;
         end
     end
@@ -475,30 +486,51 @@ for i = 1:height(manifest)
     end
 
     % B. ROC Comparison Analyses
+    % The roc_plan is event-agnostic. For each comparison in the plan, we
+    % run the analysis for every alignment_event.
     for j = 1:length(analysis_plan.roc_plan)
-        plan_item = analysis_plan.roc_plan(j);
+        comp = analysis_plan.roc_plan(j);
+        comp_name = comp.name;
+        is_any_event_missing = false;
 
-        % Use substruct_from_path for a robust idempotency check.
-        is_missing = false;
-        path_to_check = fullfile('analysis', 'roc_comparison', ...
-            plan_item.event, plan_item.name);
-        S = substruct_from_path(path_to_check);
-        try
-            subsref(session_data, S);
-        catch
-            is_missing = true;
+        % Idempotency Check: Re-check if any event's results are missing
+        % before committing to the full run. This is consistent with other
+        % event-based analyses like ANOVA.
+        for k = 1:length(alignment_events)
+            event_name = alignment_events{k};
+            path_to_check = fullfile('analysis', 'roc_comparison', event_name, comp_name);
+            S = substruct_from_path(path_to_check);
+            try
+                subsref(session_data, S);
+            catch
+                is_any_event_missing = true;
+                break;
+            end
         end
 
-        if is_missing || force_rerun.analyses
+        if is_any_event_missing || force_rerun.analyses
             step_counter = step_counter + 1;
             fprintf(['\n--- Session %s: Step %d/%d: ROC Comparison ' ...
                 'for %s ---\n'], unique_id, step_counter, ...
-                n_total_steps, plan_item.name);
-            giveFeed(sprintf('--> Running ROC Comparison: %s', plan_item.name));
+                n_total_steps, comp_name);
+            giveFeed(sprintf('--> Running ROC Comparison: %s across all events', comp_name));
 
-            result = analyze_roc_comparison(core_data, conditions, plan_item);
-            session_data.analysis.roc_comparison.(plan_item.event).(...
-                plan_item.name) = result;
+            % Loop through each event, inject it into a temporary plan,
+            % and run the analysis.
+            for k = 1:length(alignment_events)
+                event_name = alignment_events{k};
+
+                % Create a temporary comparison struct and add the .event
+                % field, which is required by analyze_roc_comparison.
+                temp_comp = comp;
+                temp_comp.event = event_name;
+
+                % Run the analysis for the current event
+                result = analyze_roc_comparison(core_data, conditions, temp_comp);
+
+                % Store the result in the correct, event-specific nested structure
+                session_data.analysis.roc_comparison.(event_name).(comp_name) = result;
+            end
             data_updated = true;
         end
     end
@@ -689,14 +721,17 @@ for i = 1:height(manifest)
     if is_analysis_complete
         for j = 1:length(analysis_plan.roc_plan)
             comp = analysis_plan.roc_plan(j);
-            path_to_check = fullfile('analysis', 'roc_comparison', ...
-                comp.event, comp.name);
-            S = substruct_from_path(path_to_check);
-            try
-                subsref(session_data, S);
-            catch
-                is_analysis_complete = false; break;
+            for k = 1:length(alignment_events)
+                event_name = alignment_events{k};
+                path_to_check = fullfile('analysis', 'roc_comparison', event_name, comp.name);
+                S = substruct_from_path(path_to_check);
+                try
+                    subsref(session_data, S);
+                catch
+                    is_analysis_complete = false; break;
+                end
             end
+            if ~is_analysis_complete, break; end
         end
     end
 
