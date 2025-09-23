@@ -183,12 +183,17 @@ for i_session = 1:nSessions
             plan_item = analysis_plan.anova_plan(j);
             analysis_name = plan_item.name;
 
+            try
             if isfield(session_data.analysis.anova_results, analysis_name)
-                session_results = session_data.analysis.anova_results.(analysis_name);
+                session_results = session_data.analysis.anova_results.(...
+                    analysis_name);
                 agg_data.anova_results.(analysis_name) = [ ...
                     agg_data.anova_results.(analysis_name); ...
                     session_results ...
                 ];
+            end
+            catch me
+                keyboard
             end
         end
     end
