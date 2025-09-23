@@ -1,27 +1,29 @@
 %% analyze_baseline_comparison.m
 %
-% Compares post-event firing rates to a pre-event baseline period for a
-% single specified condition.
+% Compares post-event firing rates to a pre-event baseline period.
 %
-% This function is designed to be a modular component of the 4factors
-% analysis pipeline. It iterates through all available alignment events in
-% core_data and, for a single specified condition, performs a statistical
-% comparison between a pre-event baseline and a post-event window.
-%
-% The specific condition to be analyzed is passed in as a name-value pair.
+% This function is a plan-driven component of the 4factors analysis pipeline.
+% It is designed to be called by a higher-level script that specifies the
+% exact conditions and alignment events to be analyzed. For each specified
+% alignment event, the function performs a statistical comparison between a
+% pre-event baseline and a post-event window for a single condition.
 %
 % Inputs:
-%   core_data     - A structure containing the core neuronal and behavioral
-%                   data, pre-aligned to various events. See the project's
-%                   data dictionary for more details.
-%   conditions    - A structure containing logical masks for different
-%                   trial conditions. The field names of this struct
-%                   correspond to condition names.
-%
-% Name-Value Pair Inputs:
-%   'condition'   - A char vector specifying the name of the condition to
-%                   analyze (e.g., 'is_reward_high'). This condition must
-%                   exist as a field in the 'conditions' struct.
+%   core_data        - A structure containing the core neuronal and behavioral
+%                      data, pre-aligned to various events. See the project's
+%                      data dictionary for more details.
+%   conditions       - A structure containing logical masks for different
+%                      trial conditions. The field names of this struct
+%                      correspond to condition names.
+%   baseline_plan_item - A structure defining the specific baseline condition
+%                        to be analyzed. It must contain a 'name' field, which
+%                        specifies the condition name (e.g., 'is_reward_high').
+%                        This name must correspond to a field in the
+%                        'conditions' struct.
+%   alignment_events - A cell array of character vectors, where each element
+%                      is the name of an alignment event to be processed
+%                      (e.g., {'cue_onset', 'outcome_onset'}). These events
+%                      must exist as fields in core_data.spikes.
 %
 % Outputs:
 %   analysis_results - A nested structure containing the analysis results.
@@ -37,37 +39,22 @@
 % Author: Jules
 % Date: 2025-09-20
 
-function analysis_results = analyze_baseline_comparison(core_data, conditions, varargin)
+function analysis_results = analyze_baseline_comparison(core_data, conditions, baseline_plan_item, alignment_events)
     %% Setup
     % Add the 'utils' directory to the path
     [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
     addpath(fullfile(script_dir, 'utils'));
 
-    % --- Input Parsing ---
-    p = inputParser;
-    p.KeepUnmatched = true; % Allow other arguments not defined here
-    addRequired(p, 'core_data', @isstruct);
-    addRequired(p, 'conditions', @isstruct);
-    addParameter(p, 'condition', '', @ischar);
-    parse(p, core_data, conditions, varargin{:});
-
-    condition_name = p.Results.condition;
-
-    if isempty(condition_name)
-        error('analyze_baseline_comparison:noCondition', ...
-              'The ''condition'' name-value pair is required.');
-    end
+    % Get condition name from the baseline plan item
+    condition_name = baseline_plan_item.name;
 
     % Initialize the output structure
     analysis_results = struct();
 
-    % Get alignment event names dynamically from core_data.spikes
-    align_events = fieldnames(core_data.spikes);
-
     %% Main Analysis Loop
-    % Iterate over each alignment event
-    for i_event = 1:numel(align_events)
-        event_name = align_events{i_event};
+    % Iterate over each alignment event specified in the plan
+    for i_event = 1:numel(alignment_events)
+        event_name = alignment_events{i_event};
 
         if ~isfield(core_data.spikes, event_name)
             continue;
