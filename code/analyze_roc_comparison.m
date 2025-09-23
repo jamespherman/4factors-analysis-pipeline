@@ -1,16 +1,15 @@
 %% analyze_roc_comparison.m
 %
-% This function performs an ROC analysis to compare neural firing rates
-% between two specified conditions. It is designed to be called with a
-% single comparison struct, passed in via a name-value pair.
+% This function performs a plan-driven ROC analysis to compare neural
+% firing rates between two specified conditions.
 %
 % Inputs:
-%   core_data  - The core data structure containing aligned neural data.
-%   conditions - A struct containing logical masks for various trial
-%                conditions.
-%   varargin   - Name-value pairs. Must include 'comparison', a struct
-%                with fields: event, cond1, cond2, name, and an
-%                optional trial_mask.
+%   core_data       - The core data structure containing aligned neural data.
+%   conditions      - A struct containing logical masks for various trial
+%                     conditions.
+%   roc_plan_item   - A struct from the analysis plan detailing the
+%                     comparison, with fields: event, cond1, cond2, name,
+%                     and an optional trial_mask.
 %
 % Output:
 %   analysis_results - A struct containing the ROC analysis results,
@@ -18,39 +17,25 @@
 %                      names of the conditions that were compared.
 %
 % Author: Jules
-% Date: 2025-09-19
+% Date: 2025-09-23
 %
 
 function analysis_results = analyze_roc_comparison(core_data, ...
-    conditions, varargin)
+    conditions, roc_plan_item)
     %% Setup Paths
     % Add the 'utils' directory to the path so that helper functions can be
     % found.
     [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
     addpath(fullfile(script_dir, 'utils'));
 
-    %% Parse Name-Value Pair Inputs
-    comparison = struct();
-    for i = 1:2:length(varargin)
-        if strcmpi(varargin{i}, 'comparison')
-            comparison = varargin{i+1};
-        end
-    end
-
-    % Check if a comparison struct was provided
-    if isempty(fieldnames(comparison))
-        error('analyze_roc_comparison:noComparison', ...
-            'A ''comparison'' struct must be provided via name-value pair.');
-    end
-
     %% Initialize Output
     analysis_results = struct();
 
     %% Extract Comparison Parameters
-    event_name = comparison.event;
-    cond1_name = comparison.cond1;
-    cond2_name = comparison.cond2;
-    comp_name = comparison.name;
+    event_name = roc_plan_item.event;
+    cond1_name = roc_plan_item.cond1;
+    cond2_name = roc_plan_item.cond2;
+    comp_name = roc_plan_item.name;
 
     % Check if the alignment event exists in the core data
     if ~isfield(core_data.spikes, event_name)
@@ -73,14 +58,14 @@ function analysis_results = analyze_roc_comparison(core_data, ...
     cond2_mask = conditions.(cond2_name);
 
     % Apply an overall trial mask if specified
-    if isfield(comparison, 'trial_mask') && ~isempty(comparison.trial_mask)
-        if isfield(conditions, comparison.trial_mask)
-            trial_mask = conditions.(comparison.trial_mask);
+    if isfield(roc_plan_item, 'trial_mask') && ~isempty(roc_plan_item.trial_mask)
+        if isfield(conditions, roc_plan_item.trial_mask)
+            trial_mask = conditions.(roc_plan_item.trial_mask);
             cond1_mask = cond1_mask & trial_mask;
             cond2_mask = cond2_mask & trial_mask;
         else
             warning('Trial mask ''%s'' not found. Skipping ''%s''.', ...
-                    comparison.trial_mask, comp_name);
+                    roc_plan_item.trial_mask, comp_name);
             return;
         end
     end
