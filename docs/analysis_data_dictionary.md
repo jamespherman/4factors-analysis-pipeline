@@ -36,6 +36,14 @@ In addition to the logical masks, the `conditions` struct contains a `.factors` 
 -   `.factors.reward`: `cell` - Contains the labels `'high'` or `'low'` for each trial.
 -   `.factors.probability`: `cell` - Contains the labels `'high'` or `'low'` for each trial, based on the data-driven spatial probability.
 
+### Sub-struct: `.dvs`
+
+This sub-struct contains pre-calculated dependent variable (DV) vectors for behavioral analyses. Each vector is calculated and then filtered by the same master mask as the logical and factor fields, ensuring that all fields in the `conditions` struct are of the same length. This is the source of data for the `analyze_behavior.m` script.
+
+-   `.dvs.reaction_time`: `double` - The time from `fixOff` to `saccadeOnset` for each trial, in seconds.
+-   `.dvs.peakVel`: `double` - The peak velocity of the saccade for each trial.
+-   `.dvs.endpoint_error`: `double` - The Euclidean distance between the saccade endpoint and the target center for each trial.
+
 ---
 ## Analysis Plan Input Structure (`analysis_plan`)
 

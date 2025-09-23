@@ -20,7 +20,8 @@ function [conditions, condition_defs] = define_task_conditions(varargin)
 %                   like `is_image_target` and `is_bullseye_target`
 %                   to separate trials for the two models. It also
 %                   contains a `factors` sub-struct with categorical
-%                   labels for use in ANOVA.
+%                   labels for use in ANOVA, and a `dvs` sub-struct
+%                   with pre-calculated dependent variables.
 %
 %   condition_defs: A struct containing the session-agnostic
 %                   analysis plan. This plan is now structured as
@@ -515,4 +516,68 @@ prob_factor(isHighProbability) = {'high'};
 prob_factor(isLowProbability) = {'low'};
 conditions.factors.probability = prob_factor(masterMask);
 
+
+%% --- Create Dependent Variables for Behavioral Analysis ---
+% This section calculates all dependent variables required by the
+% behavior_plan. It ensures that each DV is calculated only once and
+% is correctly filtered by the masterMask.
+
+conditions.dvs = struct();
+dvs_calculated = containers.Map('KeyType', 'char', 'ValueType', 'any');
+
+for i = 1:length(condition_defs.behavior_plan)
+    plan_item = condition_defs.behavior_plan(i);
+    dv_def = plan_item.dependent_variable;
+
+    % Derive a clean name for the DV from the plan item's name field
+    % e.g., 'reaction_time_imagetrials' -> 'reaction_time'
+    name_parts = strsplit(plan_item.name, '_');
+    dv_name = strjoin(name_parts(1:end-1), '_');
+
+    % If we have already calculated this DV, skip to the next
+    if isKey(dvs_calculated, dv_name)
+        continue;
+    end
+
+    % Calculate the full-length DV vector
+    dv_full = NaN(height(trialInfo), 1);
+
+    if strcmp(dv_name, 'endpoint_error')
+        % Special case: Endpoint Error
+        post_sac_xy = get_nested_field(sessionData, 'trialInfo.postSacXY');
+        targ_x = get_nested_field(sessionData, 'trialInfo.targDegX');
+        targ_y = get_nested_field(sessionData, 'trialInfo.targDegY');
+        min_len = min([size(post_sac_xy, 1), length(targ_x), length(targ_y)]);
+        dx = post_sac_xy(1:min_len, 1) - targ_x(1:min_len);
+        dy = post_sac_xy(1:min_len, 2) - targ_y(1:min_len);
+        dv_full(1:min_len) = sqrt(dx.^2 + dy.^2);
+
+    elseif length(dv_def) == 3 && strcmp(dv_def{2}, '-')
+        % Case: Subtraction of two fields (e.g., Reaction Time)
+        val1 = get_nested_field(sessionData, dv_def{1});
+        val2 = get_nested_field(sessionData, dv_def{3});
+        val1 = val1(:);
+        val2 = val2(:);
+        min_len = min(length(val1), length(val2));
+        dv_full(1:min_len) = val1(1:min_len) - val2(1:min_len);
+    else
+        % Case: Direct extraction of a single field (e.g., Peak Velocity)
+        dv_full = get_nested_field(sessionData, dv_def{1});
+        dv_full = dv_full(:);
+    end
+
+    % Filter by masterMask and store in the output struct
+    conditions.dvs.(dv_name) = dv_full(masterMask);
+    dvs_calculated(dv_name) = true; % Mark as calculated
+end
+
+end
+
+function val = get_nested_field(s, f)
+    % Helper function to access nested fields in a struct using a string path
+    parts = strsplit(f, '.');
+    val = s; % Start with the base struct
+    for i = 1:length(parts)
+        val = val.(parts{i}); % Iteratively index into the struct
+    end
 end
