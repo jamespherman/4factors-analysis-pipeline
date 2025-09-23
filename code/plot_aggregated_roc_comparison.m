@@ -1,7 +1,8 @@
 %% plot_aggregated_roc_comparison.m
 %
 %   Generates a publication-quality summary figure for a single brain area,
-%   displaying results from the bin-by-bin ROC comparison analysis. A
+%   displaying the proportion of neurons with significant preferences
+%   between two conditions, based on a bin-by-bin ROC comparison. A
 %   separate figure is generated for each alignment event.
 %
 % INPUTS:
@@ -55,28 +56,22 @@ for i_event = 1:length(event_names)
         time_vector = data_path.time_vector;
 
         % --- Data Processing ---
-        p_values = data_path.sig;
-        is_sig = p_values < 0.05;
+        sig_matrix = data_path.sig;
 
-        fr_cond1 = data_path.cond1_fr;
-        fr_cond2 = data_path.cond2_fr;
+        prop_cond2_pref = mean(sig_matrix == 1, 1, 'omitnan');
+        prop_cond1_pref = -mean(sig_matrix == -1, 1, 'omitnan');
 
-        pref_cond1 = is_sig & (fr_cond1 > fr_cond2);
-        pref_cond2 = is_sig & (fr_cond2 > fr_cond1);
-
-        count_cond1 = -sum(pref_cond1, 1);
-        count_cond2 = sum(pref_cond2, 1);
 
         % --- Plotting Data ---
         h_axes(1, i_comp) = mySubPlot([1, n_comparisons, i_comp]);
         hold on;
 
-        h1 = barStairsFill(time_vector, zeros(size(count_cond2)), count_cond2);
+        h1 = barStairsFill(time_vector, zeros(size(prop_cond2_pref)), prop_cond2_pref);
         delete(h1(2));
         set(h1(1), 'FaceColor', posColor, 'EdgeColor', 'none');
         set(h1(3), 'Color', posColor);
 
-        h2 = barStairsFill(time_vector, zeros(size(count_cond1)), count_cond1);
+        h2 = barStairsFill(time_vector, zeros(size(prop_cond1_pref)), prop_cond1_pref);
         delete(h2(2));
         set(h2(1), 'FaceColor', negColor, 'EdgeColor', 'none');
         set(h2(3), 'Color', negColor);
@@ -96,7 +91,7 @@ for i_event = 1:length(event_names)
         set(h_axes(:, 2:end), 'YTickLabel', []);
     end
 
-    ylabel(h_axes(1, 1), sprintf('Count of Neurons (%s)', brain_area_name));
+    ylabel(h_axes(1, 1), sprintf('Proportion of Neurons (%s)', brain_area_name));
 
     allAx = findall(fig, 'Type', 'Axes');
     [~, yLims] = outerLims(allAx);

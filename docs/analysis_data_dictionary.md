@@ -142,7 +142,7 @@ Compares firing rates between two conditions.
 
 ### Fields
 
--   `.sig`: `[nNeurons x nTimeBins] double` - Matrix of p-values from the ROC analysis at each time bin.
+-   `.sig`: `[nNeurons x nTimeBins] double` - Matrix indicating the direction of significant preference. +1 indicates a significant preference for condition 2, -1 indicates a significant preference for condition 1, and 0 indicates no significant difference.
 -   `.time_vector`: `[1 x nTimeBins] double` - The time vector corresponding to the columns of `.sig`.
 -   `.cond_names`: `[1 x 2] cell` - Cell array containing the names of the two conditions that were compared (e.g., `{'is_normal_dist', 'is_uniform_dist'}`).
 
@@ -158,7 +158,7 @@ Compares post-event firing rates to a pre-event baseline period.
 
 ### Fields
 
--   `.sig`: `[nNeurons x nTimeBins] double` - Matrix of p-values from the ROC analysis comparing each post-event bin to the pooled baseline.
+-   `.sig`: `[nNeurons x nTimeBins] double` - Matrix indicating the direction of significant change from baseline. +1 indicates a significant increase, -1 indicates a significant decrease, and 0 indicates no significant change.
 -   `.time_vector`: `[1 x nTimeBins] double` - The time vector for the post-event period, corresponding to the columns of `.sig`.
 
 ---

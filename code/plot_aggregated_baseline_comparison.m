@@ -1,8 +1,9 @@
 %% plot_aggregated_baseline_comparison.m
 %
 %   Generates a publication-quality summary figure for a single brain area,
-%   showing results from the baseline comparison analysis. A separate figure
-%   is generated for each alignment event.
+%   showing the proportion of neurons with significant firing rate
+%   increases or decreases compared to a baseline period. A separate
+%   figure is generated for each alignment event.
 %
 % INPUTS:
 %   aggregated_data   - A struct containing aggregated data for the brain area.
@@ -54,17 +55,10 @@ for i_event = 1:length(event_names)
         time_vector = data_path.time_vector;
 
         % --- Data Processing ---
-        p_values = data_path.sig;
-        is_sig = p_values < 0.05;
+        sig_matrix = data_path.sig;
 
-        post_event_fr = data_path.post_event_fr;
-        baseline_fr = data_path.baseline_fr;
-
-        increase = is_sig & (post_event_fr > baseline_fr);
-        decrease = is_sig & (post_event_fr < baseline_fr);
-
-        prop_increase = sum(increase, 1) / size(p_values, 1);
-        prop_decrease = -sum(decrease, 1) / size(p_values, 1);
+        prop_increase = mean(sig_matrix == 1, 1, 'omitnan');
+        prop_decrease = -mean(sig_matrix == -1, 1, 'omitnan');
 
         % --- Plotting ---
         h_axes(1, i_cond) = mySubPlot([1, n_conditions, i_cond]);
