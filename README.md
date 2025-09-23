@@ -82,6 +82,6 @@ This section provides a brief overview of the key functions in the analysis pipe
 
 *   **`alignAndBinSpikes.m`**: A core utility for creating binned spike count matrices.
 *   **`arrayROC.m`**: Calculates the Receiver Operating Characteristic (ROC) and Area Under the Curve (AUC) for time-resolved data.
-*   **`calculate_baseline_fr.m`**: Computes the baseline firing rate for each neuron.
+*   **`calculate_baseline_fr.m`**: Computes the mean firing rate for each neuron over a specified window for a given set of trials.
 *   **`findOneDrive.m`**: A helper function that automatically finds the path to the user's OneDrive directory.
 *   **`initCodes.m`**: Initializes a structure with task-related codes.

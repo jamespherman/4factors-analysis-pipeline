@@ -95,8 +95,27 @@ for i = 1:height(manifest)
     if ~isfield(session_data, 'metrics')
         giveFeed('Metrics field not found. Calculating on-the-fly...');
 
-        % Calculate baseline firing rate and store:
-        baseline_fr = calculate_baseline_fr(session_data);
+        % --- Calculate Baseline Firing Rate ---
+        % Retrieve config from the analysis plan
+        config = analysis_plan.baseline_fr_config;
+
+        % Create a trial mask for the specified task
+        codes = initCodes();
+        task_code_field = ['uniqueTaskCode_' config.task_name];
+        if isfield(codes, task_code_field)
+            task_code = codes.(task_code_field);
+            trial_mask = session_data.trialInfo.taskCode == task_code;
+        else
+            error('run_4factors_analysis:taskCodeNotFound', ...
+                  'Task code for "%s" not found in initCodes.', ...
+                  config.task_name);
+        end
+
+        % Calculate baseline firing rate and store it
+        baseline_fr = calculate_baseline_fr(session_data, ...
+                                            config.event, ...
+                                            config.window, ...
+                                            trial_mask);
         session_data.metrics.baseline_fr = baseline_fr;
 
         % Calculate waveform metrics and add to session_data
