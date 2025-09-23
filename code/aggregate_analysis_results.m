@@ -31,7 +31,7 @@ addpath(project_root);
 giveFeed('Loading session manifest and analysis plan...');
 manifest_path = fullfile(project_root, 'config', 'session_manifest.csv');
 manifest = readtable(manifest_path);
-analysis_plan = define_task_conditions(); % Get the canonical plan
+[~, analysis_plan] = define_task_conditions(); % Get the canonical plan
 giveFeed('Manifest and plan loaded.');
 
 %% Initialize Aggregated Data Structures
@@ -80,7 +80,7 @@ for i_area = 1:length(brain_areas)
             plan_item = analysis_plan.anova_plan(j);
             if plan_item.run
                 agg_data.anova_results.(plan_item.name) = struct();
-                 for k = 1:length(analysis_plan.events)
+                for k = 1:length(analysis_plan.events)
                     event_name = analysis_plan.events{k};
                     % Initialize as an empty struct to hold table and stats
                     agg_data.anova_results.(plan_item.name).(event_name) = struct();
@@ -128,7 +128,7 @@ for i_session = 1:nSessions
 
     if ~exist(session_data_path, 'file')
         warning('aggregate_analysis_results:fileNotFound', ...
-                'Could not find session_data.mat for %s. Skipping.', session_id);
+            'Could not find session_data.mat for %s. Skipping.', session_id);
         continue;
     end
 
@@ -150,14 +150,15 @@ for i_session = 1:nSessions
     % Append session ID, one entry per neuron
     agg_data.session_id = [agg_data.session_id; repmat({session_id}, n_neurons, 1)];
 
+    try
     % --- 1. Aggregate ROC Comparison Results ---
     if isfield(analysis_plan, 'roc_plan')
         for j = 1:length(analysis_plan.roc_plan)
             plan_item = analysis_plan.roc_plan(j);
             data_to_append = nan(n_neurons, 1); % Default to NaN
             if isfield(analysis_results, 'roc_comparison') && ...
-               isfield(analysis_results.roc_comparison, plan_item.event) && ...
-               isfield(analysis_results.roc_comparison.(plan_item.event), plan_item.name)
+                    isfield(analysis_results.roc_comparison, plan_item.event) && ...
+                    isfield(analysis_results.roc_comparison.(plan_item.event), plan_item.name)
 
                 res = analysis_results.roc_comparison.(plan_item.event).(plan_item.name);
                 data_to_append = res.sig;
@@ -171,6 +172,9 @@ for i_session = 1:nSessions
                 [agg_data.roc_comparison.(plan_item.event).(plan_item.name).sig; data_to_append];
         end
     end
+    catch me
+        keyboard
+    end
 
     % --- 2. Aggregate Baseline Comparison Results ---
     if isfield(analysis_plan, 'baseline_plan')
@@ -180,8 +184,8 @@ for i_session = 1:nSessions
                 event_name = analysis_plan.events{k};
                 data_to_append = nan(n_neurons, 1); % Default to NaN
                 if isfield(analysis_results, 'baseline_comparison') && ...
-                   isfield(analysis_results.baseline_comparison, event_name) && ...
-                   isfield(analysis_results.baseline_comparison.(event_name), plan_item.name)
+                        isfield(analysis_results.baseline_comparison, event_name) && ...
+                        isfield(analysis_results.baseline_comparison.(event_name), plan_item.name)
 
                     res = analysis_results.baseline_comparison.(event_name).(plan_item.name);
                     data_to_append = res.sig;
@@ -209,8 +213,8 @@ for i_session = 1:nSessions
                 % integrity of the struct array for concatenation.
                 data_to_append = struct(); % Default to empty
                 if isfield(analysis_results, 'anova_results') && ...
-                   isfield(analysis_results.anova_results, plan_item.name) && ...
-                   isfield(analysis_results.anova_results.(plan_item.name), event_name)
+                        isfield(analysis_results.anova_results, plan_item.name) && ...
+                        isfield(analysis_results.anova_results.(plan_item.name), event_name)
 
                     data_to_append = analysis_results.anova_results.(plan_item.name).(event_name);
                 end
@@ -219,32 +223,42 @@ for i_session = 1:nSessions
                 % the first real result, we can directly assign it. Otherwise,
                 % we concatenate.
                 if isempty(fieldnames(agg_data.anova_results.(plan_item.name).(event_name)))
-                     agg_data.anova_results.(plan_item.name).(event_name) = data_to_append;
+                    agg_data.anova_results.(plan_item.name).(event_name) = data_to_append;
                 else
-                     agg_data.anova_results.(plan_item.name).(event_name) = ...
+                    agg_data.anova_results.(plan_item.name).(event_name) = ...
                         [agg_data.anova_results.(plan_item.name).(event_name); data_to_append];
                 end
             end
         end
     end
+    try
+        % --- 4. Aggregate Behavioral Results ---
+        if isfield(analysis_plan, 'behavior_plan') && isfield(analysis_results, 'behavioral_results')
+            for j = 1:length(analysis_plan.behavior_plan)
+                plan_item = analysis_plan.behavior_plan(j);
+                analysis_name = plan_item.name;
 
-    % --- 4. Aggregate Behavioral Results ---
-    if isfield(analysis_plan, 'behavior_plan') && isfield(analysis_results, 'behavioral_results')
-        for j = 1:length(analysis_plan.behavior_plan)
-            plan_item = analysis_plan.behavior_plan(j);
-            analysis_name = plan_item.name;
+                if isfield(analysis_results.behavioral_results, analysis_name)
+                    session_table = analysis_results.behavioral_results.(analysis_name);
+                    session_id_col = repmat({session_id}, height(session_table), 1);
+                    session_table.session_id = session_id_col;
 
-            if isfield(analysis_results.behavioral_results, analysis_name)
-                session_table = analysis_results.behavioral_results.(analysis_name);
-                session_id_col = repmat({session_id}, height(session_table), 1);
-                session_table.session_id = session_id_col;
-
-                agg_data.behavioral_results.(analysis_name) = [ ...
-                    agg_data.behavioral_results.(analysis_name); ...
-                    session_table ...
-                ];
+                    % Check if the aggregated table is still empty
+                    if isempty(agg_data.behavioral_results.(analysis_name))
+                        % If it's the first table for this analysis, just assign it
+                        agg_data.behavioral_results.(analysis_name) = session_table;
+                    else
+                        % For all subsequent tables, perform the vertical concatenation
+                        agg_data.behavioral_results.(analysis_name) = [ ...
+                            agg_data.behavioral_results.(analysis_name); ...
+                            session_table ...
+                            ];
+                    end
+                end
             end
         end
+    catch me
+        keyboard
     end
 
     % --- 5. Aggregate Population Decoding Results ---
@@ -257,11 +271,11 @@ for i_session = 1:nSessions
                 agg_data.population_decoding.(test_name).accuracy = [ ...
                     agg_data.population_decoding.(test_name).accuracy; ...
                     res.accuracy ...
-                ];
+                    ];
                 agg_data.population_decoding.(test_name).accuracy_ci = [ ...
                     agg_data.population_decoding.(test_name).accuracy_ci; ...
                     res.accuracy_ci ...
-                ];
+                    ];
             else
                 % If a session is missing a decoding result, append NaN
                 agg_data.population_decoding.(test_name).accuracy = [ ...
