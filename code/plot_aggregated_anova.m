@@ -66,21 +66,26 @@ for i_row = 1:n_rows
         h_axes(i_row, i_col) = ax;
         hold on;
 
-        session_results = aggregated_data.anova_results.(analysis_name);
+        if ~isfield(aggregated_data.anova_results, analysis_name) || ...
+           ~isfield(aggregated_data.anova_results.(analysis_name), event_name)
+            text(0.5, 0.5, 'N/A', 'HorizontalAlignment', 'center');
+            axis off; continue;
+        end
+
+        session_results = aggregated_data.anova_results.(analysis_name).(event_name);
         n_sessions = length(session_results);
         all_proportions = [];
         time_vector = [];
 
         % Aggregate proportions from all sessions
         for i_session = 1:n_sessions
-            if isfield(session_results(i_session), event_name) && ...
-               isfield(session_results(i_session).(event_name), p_field)
+            if isfield(session_results(i_session), p_field)
 
-                p_values = session_results(i_session).(event_name).(p_field);
+                p_values = session_results(i_session).(p_field);
                 if isempty(p_values), continue; end
 
                 if isempty(time_vector)
-                    time_vector = session_results(i_session).(event_name).time_vector;
+                    time_vector = session_results(i_session).time_vector;
                 end
 
                 session_proportion = mean(p_values < 0.05, 1, 'omitnan');
