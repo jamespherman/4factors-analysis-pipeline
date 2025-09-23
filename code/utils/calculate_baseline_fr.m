@@ -37,7 +37,7 @@ end
 % --- Setup and Data Extraction ---
 cluster_info = session_data.spikes.cluster_info;
 cluster_ids = cluster_info.cluster_id;
-nNeurons = height(cluster_info); % Use height on table for robustness
+nNeurons = height(cluster_info.cluster_id);
 all_spike_times = session_data.spikes.times;
 all_spike_clusters = session_data.spikes.clusters;
 event_times = session_data.eventTimes.(event_name);
