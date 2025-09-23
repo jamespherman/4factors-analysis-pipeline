@@ -35,10 +35,9 @@ function [conditions, condition_defs] = define_task_conditions(varargin)
 % which analyses to run.
 
 % A. Events and Field Names
-% The 'events' field lists all unique event names that the core data
-% preparation script should look for.
-condition_defs.events = {'fixOn', 'targetOn', 'fixOff', ...
-    'saccadeOnset', 'reward'};
+% The 'events' field is the master list of alignment events for all
+% time-resolved analyses.
+condition_defs.events = {'fixOn', 'targetOn', 'fixOff', 'saccadeOnset', 'reward'};
 
 % The 'event_field_names' field specifies which struct fields in the
 % analysis plans contain event names. This allows for centralized
@@ -68,6 +67,8 @@ condition_defs.condition_masks.spatial = {'is_contralateral_target', ...
 
 % C. Baseline Comparison Plan
 % Each element defines a "Baseline vs. Post-Event Activity" analysis.
+% This plan has been verified to ensure it only contains conditions
+% relevant to the 4-factors task.
 baseline_conditions = [ ...
     condition_defs.condition_masks.reward, ...
     condition_defs.condition_masks.salience, ...
@@ -121,19 +122,19 @@ diag_plots(2).conditions_to_compare = ...
 condition_defs.diagnostic_plots = diag_plots;
 
 % F. N-way ANOVA Plan (Two-Model Approach)
+% The ANOVA models defined here will be run for each event in
+% condition_defs.events.
 condition_defs.anova_plan = struct('name', {}, 'run', {}, ...
-    'event', {}, 'factors', {}, 'trial_mask', {});
+    'factors', {}, 'trial_mask', {});
 % Model 1: Image Trials
 condition_defs.anova_plan(1).name = 'anova_imagetrials';
 condition_defs.anova_plan(1).run = true;
-condition_defs.anova_plan(1).event = 'targetOn';
 condition_defs.anova_plan(1).factors = {'reward', 'probability', 'identity'};
 condition_defs.anova_plan(1).trial_mask = ...
     {'is_contralateral_target', 'is_image_target'};
 % Model 2: Bullseye Trials
 condition_defs.anova_plan(2).name = 'anova_bullseyetrials';
 condition_defs.anova_plan(2).run = true;
-condition_defs.anova_plan(2).event = 'targetOn';
 condition_defs.anova_plan(2).factors = {'reward', 'probability', 'saliency'};
 condition_defs.anova_plan(2).trial_mask = ...
     {'is_contralateral_target', 'is_bullseye_target'};
