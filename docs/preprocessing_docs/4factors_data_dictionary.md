@@ -30,7 +30,7 @@ This substructure contains initialization parameters for the task.
 | `nTrDataListRows` | The number of rows in `p.init.trDataInitList`. |
 | `strobeList` | A cell array defining the variables to be strobed at the end of each trial. |
 | `trialsArray` | An array that defines the parameters for each trial in the experiment. The columns are defined by `p.init.trialArrayColumnNames`. |
-| `trialArrayColumnNames` | A cell array of strings that are the column headers for `p.init.trialsArray`. These include: `halfBlock`, `targetLocIdx`, `stimType` (1: Face, 2: Non-Face, 3: HS/TC1, 4: LS/TC1, 5: HS/TC2, 6: LS/TC2), `salience` (0 for images, 1 for high, 2 for low), `reward` (1 for high, 2 for low), `targetColor` (0 for images, 1 or 2 for bullseye), `numTrials`, `trialCode`, `completed`. |
+| `trialArrayColumnNames` | A cell array of strings that are the column headers for `p.init.trialsArray`. These include: `halfBlock`, `targetLocIdx`, `stimType` (1: Face, 2: Non-Face, 3: HS/TC1, 4: LS/TC1, 5: HS/TC2, 6: LS/TC2), `salience` (0 for images, 1 for high, 2 for low), `reward` (1 for high, 2 for low), `targetColor` (0 for images, 1 or 2 for bullseye), `numTrials`, `trialCode`, `completed`. **Note on Spatial Probability:** The spatial probability of a target is not explicitly defined in this array but is determined by the `halfBlock` and `targetLocIdx`. In Block 1, `targetLocIdx` 1 is high-probability. In Block 2, `targetLocIdx` 3 is high-probability. All other locations are low-probability within their respective blocks. |
 
 ### `p.rig`
 
