@@ -7,13 +7,22 @@
 ---
 ## Refactoring and Impact Analysis Protocol
 
-When you are asked to refactor or modify code, your implementation plan must be comprehensive and account for all dependencies across the entire pipeline. Before writing any code, you must consider the impact of the change on all related files. Use the following checklist to ensure your plan is complete:
+The analysis pipeline follows a strict sequential order:
+Define Conditions & Plan -> Run Per-Session Analyses -> Aggregate Results -> Plot Aggregated Results
 
-1.  **Definition:** Which files define the relevant data structures or configurations (e.g., `define_task_conditions.m`, `.md` files)?
-2.  **Creation:** Which scripts create the data on a per-session basis (e.g., `analyze_*.m` functions)?
-3.  **Orchestration:** Which scripts read the configuration to execute the creation process (e.g., `run_4factors_analysis.m`)?
-4.  **Aggregation:** Which scripts pool the data from multiple sessions (e.g., `aggregate_analysis_results.m`)?
-5.  **Consumption:** Which scripts consume the final aggregated data (e.g., `plot_aggregated_*.m` functions)?
+Crucially, when a function in one stage is modified, you must assess the impact on all subsequent stages. For example, a change to define_task_conditions.m will likely affect all other stages, while a change to a plotting function will affect none.
+
+When you are asked to refactor or modify code, your implementation plan must be comprehensive and account for all dependencies across the entire pipeline. Before writing any code, you must consider the impact of the change on all related files. Use the following checklist to perform this impact analysis:
+
+1. Definition: Which files define the relevant data structures or configurations (e.g., define_task_conditions.m, .md files)? 
+
+2. Creation: Which scripts create the data on a per-session basis (e.g., analyze_*.m functions)? 
+
+3. Orchestration: Which scripts read the configuration to execute the creation process (e.g., run_4factors_analysis.m)? 
+
+4. Aggregation: Which scripts pool the data from multiple sessions (e.g., aggregate_analysis_results.m)? 
+
+5. Consumption: Which scripts consume the final aggregated data (e.g., plot_aggregated_*.m functions)? 
 ---
 
 ## IMPORTANT: Data Structures
