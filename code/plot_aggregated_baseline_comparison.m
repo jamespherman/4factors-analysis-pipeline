@@ -2,15 +2,28 @@
 %
 %   Generates a publication-quality summary figure for a single brain area,
 %   showing the proportion of neurons with significant firing rate
-%   increases or decreases compared to a baseline period. A separate
-%   figure is generated for each alignment event.
+%   increases or decreases compared to a baseline period. The output adheres
+%   to the specifications in `docs/plotting_requirements.md`.
+%
+%   A separate figure is generated for each alignment event.
 %
 % INPUTS:
-%   aggregated_data   - A struct containing aggregated data for the brain area.
-%   brain_area_name   - A string with the name of the brain area (e.g., 'SC').
+%
+%   aggregated_data - A struct containing aggregated data for one brain area.
+%                     This script requires the `baseline_comparison` field,
+%                     structured as:
+%
+%                     .(event_name).(condition_name) = [1 x nSessions] struct array
+%
+%                     Each struct in the array must contain:
+%                       - .sig: [nNeurons x nTimeBins] matrix of significance
+%                               results (+1 for increase, -1 for decrease).
+%                       - .time_vector: [1 x nTimeBins] vector of time points.
+%
+%   brain_area_name - A string with the name of the brain area (e.g., 'SC').
 %
 % Author: Jules
-% Date: 2025-09-17
+% Date: 2025-09-24
 %
 
 function plot_aggregated_baseline_comparison(aggregated_data, brain_area_name)
@@ -51,14 +64,27 @@ for i_event = 1:length(event_names)
     %% Main Plotting Loop for Conditions
     for i_cond = 1:n_conditions
         cond_name = condition_names{i_cond};
-        data_path = aggregated_data.baseline_comparison.(event_name).(cond_name);
-        time_vector = data_path.time_vector;
+        session_data = aggregated_data.baseline_comparison.(event_name).(cond_name);
+
+        % --- Data Aggregation from Struct Array ---
+        if isempty(session_data)
+            h_axes(1, i_cond) = mySubPlot([1, n_conditions, i_cond]);
+            title(h_axes(1, i_cond), sprintf('%s (No Data)', strrep(cond_name, '_', ' ')));
+            continue;
+        end
+
+        all_sig_matrices = arrayfun(@(s) s.sig, session_data, 'UniformOutput', false);
+        sig_matrix = cat(1, all_sig_matrices{:});
+        time_vector = session_data(1).time_vector;
 
         % --- Data Processing ---
-        sig_matrix = data_path.sig;
-
-        prop_increase = mean(sig_matrix == 1, 1, 'omitnan');
-        prop_decrease = -mean(sig_matrix == -1, 1, 'omitnan');
+        if isempty(sig_matrix)
+            prop_increase = zeros(1, length(time_vector));
+            prop_decrease = zeros(1, length(time_vector));
+        else
+            prop_increase = mean(sig_matrix == 1, 1, 'omitnan');
+            prop_decrease = -mean(sig_matrix == -1, 1, 'omitnan');
+        end
 
         % --- Plotting ---
         h_axes(1, i_cond) = mySubPlot([1, n_conditions, i_cond]);
