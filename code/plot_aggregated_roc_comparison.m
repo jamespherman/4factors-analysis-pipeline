@@ -2,15 +2,28 @@
 %
 %   Generates a publication-quality summary figure for a single brain area,
 %   displaying the proportion of neurons with significant preferences
-%   between two conditions, based on a bin-by-bin ROC comparison. A
-%   separate figure is generated for each alignment event.
+%   between two conditions, based on a bin-by-bin ROC comparison. The
+%   output adheres to the specifications in `docs/plotting_requirements.md`.
+%
+%   A separate figure is generated for each alignment event.
 %
 % INPUTS:
-%   aggregated_data   - A struct containing aggregated data for one brain area.
-%   brain_area_name   - A string with the name of the brain area (e.g., 'SC').
+%
+%   aggregated_data - A struct containing aggregated data for one brain area.
+%                     This script requires the `roc_comparison` field, which
+%                     is structured as:
+%
+%                     .(event_name).(comp_name) = [1 x nSessions] struct array
+%
+%                     Each struct in the array must contain:
+%                       - .sig: [nNeurons x nTimeBins] matrix of significance
+%                               results (+1 for cond2 pref, -1 for cond1 pref).
+%                       - .time_vector: [1 x nTimeBins] vector of time points.
+%
+%   brain_area_name - A string with the name of the brain area (e.g., 'SC').
 %
 % Author: Jules
-% Date: 2025-09-17
+% Date: 2025-09-24
 %
 
 function plot_aggregated_roc_comparison(aggregated_data, brain_area_name)
@@ -50,16 +63,34 @@ for i_event = 1:length(event_names)
     %% Main Plotting Loop for Comparisons
     for i_comp = 1:n_comparisons
         comp_name = comparison_names{i_comp};
-        data_path = aggregated_data.roc_comparison.(event_name).(comp_name);
+        session_data = aggregated_data.roc_comparison.(event_name).(comp_name);
 
-        % --- Time Vector and Firing Rate Data ---
-        time_vector = data_path.time_vector;
+        % --- Data Aggregation from Struct Array ---
+        if isempty(session_data)
+            % This case should ideally not be reached if the aggregation script
+            % does not create empty fields, but as a safeguard:
+            h_axes(1, i_comp) = mySubPlot([1, n_comparisons, i_comp]);
+            title(h_axes(1, i_comp), sprintf('%s (No Data)', strrep(comp_name, '_', ' ')));
+            continue;
+        end
+
+        % Concatenate the .sig matrices from each session into a single matrix.
+        all_sig_matrices = arrayfun(@(s) s.sig, session_data, 'UniformOutput', false);
+        sig_matrix = cat(1, all_sig_matrices{:});
+
+        % Time vector is consistent across sessions; take from the first.
+        time_vector = session_data(1).time_vector;
 
         % --- Data Processing ---
-        sig_matrix = data_path.sig;
-
-        prop_cond2_pref = mean(sig_matrix == 1, 1, 'omitnan');
-        prop_cond1_pref = -mean(sig_matrix == -1, 1, 'omitnan');
+        if isempty(sig_matrix)
+            % If no neurons were found across all sessions, plot zeros.
+            prop_cond2_pref = zeros(1, length(time_vector));
+            prop_cond1_pref = zeros(1, length(time_vector));
+        else
+            % Calculate proportion of neurons preferring each condition.
+            prop_cond2_pref = mean(sig_matrix == 1, 1, 'omitnan');
+            prop_cond1_pref = -mean(sig_matrix == -1, 1, 'omitnan');
+        end
 
 
         % --- Plotting Data ---

@@ -1,33 +1,60 @@
 %% plot_aggregated_behavior.m
 %
-% Generates a summary figure visualizing the proportion of sessions
-% with significant behavioral effects, based on the two-model
-% (Image vs. Bullseye trials) analysis. The figure is structured as a
-% 3x2 grid: Rows for behavioral measures and columns for main vs.
-% interaction effects.
+%   Generates a summary figure visualizing the proportion of sessions with
+%   significant behavioral effects. The output adheres to the specifications
+%   in `docs/plotting_requirements.md`.
+%
+%   The figure is structured with behavioral measures as rows and effect types
+%   (Main vs. Interaction) as columns.
 %
 % INPUTS:
-%   aggregated_data   - A struct with aggregated behavioral results.
-%   brain_area_name   - A string with the name of the brain area.
+%
+%   aggregated_data - A struct containing aggregated data for one brain area.
+%                     This script requires the `behavioral_results` field,
+%                     which is a struct of tables, one for each analysis name
+%                     (e.g., 'reaction_time_imagetrials'). Each table must
+%                     be in a "tidy" format and contain 'Effect', 'pValue',
+%                     and 'session_id' columns.
+%
+%   brain_area_name - A string with the name of the brain area (e.g., 'SC').
+%   analysis_plan   - The analysis plan struct, which is the source of truth
+%                     for behavioral measures and model definitions.
 %
 % Author: Jules
-% Date: 2025-09-21
+% Date: 2025-09-24
 %
-function plot_aggregated_behavior(aggregated_data, brain_area_name)
+function plot_aggregated_behavior(aggregated_data, brain_area_name, analysis_plan)
 
 %% Setup
-[script_dir, ~, ~] = fileparts(mfilename('fullpath'));
-addpath(fullfile(script_dir, 'utils'));
+project_root = fullfile(findOneDrive, 'Code', '4factors-analysis-pipeline');
+figures_dir = fullfile(project_root, 'figures');
+addpath(fullfile(project_root, 'code', 'utils'));
 
-measures = {'reaction_time', 'peak_velocity', 'endpoint_error'};
-model_types = {'imagetrials', 'bullseyetrials'};
+if ~isfield(aggregated_data, 'behavioral_results')
+    warning('plot_aggregated_behavior:no_data', 'No behavioral data found.');
+    return;
+end
+
+%% Dynamically Determine Plot Layout from Analysis Plan
+behavior_plan = analysis_plan.behavior_plan;
+measures = {behavior_plan.name};
+models = analysis_plan.behavior_models;
+model_labels = {models.label};
+
+% Find all unique main and interaction effects across all models
+all_main_effects = {};
+all_interaction_effects = {};
+for i = 1:length(models)
+    all_main_effects = union(all_main_effects, models(i).main_effects);
+    all_interaction_effects = union(all_interaction_effects, models(i).interaction_effects);
+end
+
 n_rows = numel(measures);
 n_cols = 2; % Main Effects, Interaction Effects
 
-fig = figure('Position', [100, 100, 800, 900], 'Color', 'w');
+fig = figure('Position', [100, 100, 400 * n_cols, 300 * n_rows], 'Color', 'w');
 h_axes = gobjects(n_rows, n_cols);
-
-colors = richColors(2); % Colors for Image and Bullseye models
+colors = richColors(length(models));
 
 %% Plotting Loop
 for i_row = 1:n_rows
@@ -38,34 +65,31 @@ for i_row = 1:n_rows
     h_axes(i_row, 1) = ax_main;
     hold on;
 
-    main_effects_img = {'reward', 'probability', 'identity'};
-    main_effects_bull = {'reward', 'probability', 'saliency'};
-    labels_main = {'Reward', 'Probability', 'Identity/Saliency'};
+    proportions_main = nan(length(models), length(all_main_effects));
+    for i_model = 1:length(models)
+        model_def = models(i_model);
+        analysis_name = [measure, '_', model_def.name];
+        if ~isfield(aggregated_data.behavioral_results, analysis_name)
+            continue;
+        end
 
-    proportions = nan(2, 3); % 2 models, 3 effects
+        tbl = aggregated_data.behavioral_results.(analysis_name);
+        all_sessions = unique(tbl.session_id);
+        n_total_sessions = numel(all_sessions);
+        if n_total_sessions == 0, continue; end
 
-    % Image Trials
-    table_img = aggregated_data.behavioral_results.([measure '_imagetrials']);
-    sessions_img = unique(table_img.session_id);
-    for i = 1:3
-        sig_sessions = unique(table_img.session_id( ...
-            strcmp(table_img.Effect, main_effects_img{i}) & table_img.pValue < 0.05));
-        proportions(1, i) = numel(sig_sessions) / numel(sessions_img);
+        for i_effect = 1:length(all_main_effects)
+            effect_name = all_main_effects{i_effect};
+            if ismember(effect_name, model_def.main_effects)
+                sig_sessions = unique(tbl.session_id(strcmp(tbl.Effect, effect_name) & tbl.pValue < 0.05));
+                proportions_main(i_model, i_effect) = numel(sig_sessions) / n_total_sessions;
+            end
+        end
     end
 
-    % Bullseye Trials
-    table_bull = aggregated_data.behavioral_results.([measure '_bullseyetrials']);
-    sessions_bull = unique(table_bull.session_id);
-    for i = 1:3
-        sig_sessions = unique(table_bull.session_id( ...
-            strcmp(table_bull.Effect, main_effects_bull{i}) & table_bull.pValue < 0.05));
-        proportions(2, i) = numel(sig_sessions) / numel(sessions_bull);
-    end
-
-    b_main = bar(proportions', 'grouped');
-    b_main(1).FaceColor = colors(1, :);
-    b_main(2).FaceColor = colors(2, :);
-    set(ax_main, 'XTickLabel', labels_main);
+    b_main = bar(proportions_main', 'grouped');
+    for i = 1:length(b_main), b_main(i).FaceColor = colors(i,:); end
+    set(ax_main, 'XTickLabel', all_main_effects, 'XTickLabelRotation', 30);
     title(ax_main, 'Main Effects');
 
     % --- Column 2: Interaction Effects ---
@@ -73,52 +97,55 @@ for i_row = 1:n_rows
     h_axes(i_row, 2) = ax_int;
     hold on;
 
-    int_effects_img = {'reward:probability', 'reward:identity', 'probability:identity'};
-    int_effects_bull = {'reward:probability', 'reward:saliency', 'probability:saliency'};
-    labels_int = {'R x P', 'R x I/S', 'P x I/S'};
+    proportions_int = nan(length(models), length(all_interaction_effects));
+    for i_model = 1:length(models)
+        model_def = models(i_model);
+        analysis_name = [measure, '_', model_def.name];
+        if ~isfield(aggregated_data.behavioral_results, analysis_name)
+            continue;
+        end
 
-    proportions_int = nan(2, 3); % 2 models, 3 effects
+        tbl = aggregated_data.behavioral_results.(analysis_name);
+        all_sessions = unique(tbl.session_id);
+        n_total_sessions = numel(all_sessions);
+        if n_total_sessions == 0, continue; end
 
-    % Image Trials
-    for i = 1:3
-        sig_sessions = unique(table_img.session_id( ...
-            strcmp(table_img.Effect, int_effects_img{i}) & table_img.pValue < 0.05));
-        proportions_int(1, i) = numel(sig_sessions) / numel(sessions_img);
-    end
-
-    % Bullseye Trials
-    for i = 1:3
-        sig_sessions = unique(table_bull.session_id( ...
-            strcmp(table_bull.Effect, int_effects_bull{i}) & table_bull.pValue < 0.05));
-        proportions_int(2, i) = numel(sig_sessions) / numel(sessions_bull);
+        for i_effect = 1:length(all_interaction_effects)
+            effect_name = all_interaction_effects{i_effect};
+             if ismember(effect_name, model_def.interaction_effects)
+                sig_sessions = unique(tbl.session_id(strcmp(tbl.Effect, effect_name) & tbl.pValue < 0.05));
+                proportions_int(i_model, i_effect) = numel(sig_sessions) / n_total_sessions;
+            end
+        end
     end
 
     b_int = bar(proportions_int', 'grouped');
-    b_int(1).FaceColor = colors(1, :);
-    b_int(2).FaceColor = colors(2, :);
-    set(ax_int, 'XTickLabel', labels_int);
+    for i = 1:length(b_int), b_int(i).FaceColor = colors(i,:); end
+    set(ax_int, 'XTickLabel', strrep(all_interaction_effects, ':', ' x '), 'XTickLabelRotation', 30);
     title(ax_int, 'Interaction Effects');
 end
 
 %% Final Figure Formatting
-linkaxes(h_axes(:), 'y');
-ylim(h_axes(1,1), [0, 1]);
+linkaxes(h_axes(isgraphics(h_axes)), 'y');
+ylim(h_axes(1,1), [0, 1]); % Set Y-axis from 0 to 1
 
 for i_row = 1:n_rows
-    ylabel(h_axes(i_row, 1), measures{i_row}, 'FontWeight', 'bold');
-    set(h_axes(i_row, 2), 'YTickLabel', []);
+    if isgraphics(h_axes(i_row, 1))
+        ylabel(h_axes(i_row, 1), strrep(measures{i_row}, '_', ' '), 'FontWeight', 'bold');
+    end
+    if isgraphics(h_axes(i_row, 2))
+        set(h_axes(i_row, 2), 'YTickLabel', []);
+    end
 end
 
-legend(h_axes(1,2), {'Image Trials', 'Bullseye Trials'}, 'Location', 'northeast');
+legend(h_axes(1,2), model_labels, 'Location', 'northeast', 'Interpreter', 'none');
 sgtitle(sprintf('Aggregated Behavioral Analysis for %s', brain_area_name), ...
-    'FontWeight', 'bold');
+    'FontWeight', 'bold', 'Interpreter', 'none');
 
 %% Save Figure
-project_root = fullfile(findOneDrive, 'Code', '4factors-analysis-pipeline');
-figures_dir = fullfile(project_root, 'figures', 'behavior');
 if ~exist(figures_dir, 'dir'), mkdir(figures_dir); end
 fig_filename = fullfile(figures_dir, ...
-    sprintf('aggregated_behavior_%s.pdf', brain_area_name));
+    sprintf('aggregated_behavioral_effects_%s.pdf', brain_area_name));
 pdfSave(fig_filename, fig.Position(3:4)/72, fig);
 
 end
