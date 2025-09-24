@@ -32,7 +32,7 @@ All masks within this struct are the same length and have been pre-filtered to i
 In addition to the logical masks, the `conditions` struct contains a `.factors` sub-struct. This struct holds cell arrays of categorical labels for each of the primary experimental factors, ready for use in statistical models like ANOVA. Like the logical masks, these cell arrays are pre-filtered to include only valid '4factors' trials.
 
 -   `.factors.identity`: `cell` - Contains the labels `'face'`, `'nonface'`, or `'bullseye'` for each trial.
--   `.factors.saliency`: `cell` - Contains the labels `'high'`, `'low'`, or `'neutral'` for each trial. `'neutral'` corresponds to bullseye trials where salience is not applicable.
+-   `.factors.salience`: `cell` - Contains the labels `'high'`, `'low'`, or `'neutral'` for each trial. `'neutral'` corresponds to image trials, not bullseye trials, to match the code's logic.
 -   `.factors.reward`: `cell` - Contains the labels `'high'` or `'low'` for each trial.
 -   `.factors.probability`: `cell` - Contains the labels `'high'` or `'low'` for each trial, based on the fixed, block-dependent experimental design.
 

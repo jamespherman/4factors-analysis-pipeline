@@ -142,7 +142,7 @@ condition_defs.anova_plan(1).trial_mask = ...
 % Model 2: Bullseye Trials
 condition_defs.anova_plan(2).name = 'anova_bullseyetrials';
 condition_defs.anova_plan(2).run = true;
-condition_defs.anova_plan(2).factors = {'reward', 'probability', 'saliency'};
+condition_defs.anova_plan(2).factors = {'reward', 'probability', 'salience'};
 condition_defs.anova_plan(2).trial_mask = ...
     {'is_contralateral_target', 'is_bullseye_target'};
 
@@ -159,7 +159,7 @@ condition_defs.behavior_plan(1).trial_mask = ...
 condition_defs.behavior_plan(2).name = 'reaction_time_bullseyetrials';
 condition_defs.behavior_plan(2).dependent_variable = ...
     {'eventTimes.pdsSaccadeOnset', '-', 'eventTimes.pdsFixOff'};
-condition_defs.behavior_plan(2).factors = {'reward', 'probability', 'saliency'};
+condition_defs.behavior_plan(2).factors = {'reward', 'probability', 'salience'};
 condition_defs.behavior_plan(2).trial_mask = ...
     {'is_contralateral_target', 'is_bullseye_target'};
 % -- Peak Velocity --
@@ -170,7 +170,7 @@ condition_defs.behavior_plan(3).trial_mask = ...
     {'is_contralateral_target', 'is_image_target'};
 condition_defs.behavior_plan(4).name = 'peak_velocity_bullseyetrials';
 condition_defs.behavior_plan(4).dependent_variable = {'trialInfo.peakVel'};
-condition_defs.behavior_plan(4).factors = {'reward', 'probability', 'saliency'};
+condition_defs.behavior_plan(4).factors = {'reward', 'probability', 'salience'};
 condition_defs.behavior_plan(4).trial_mask = ...
     {'is_contralateral_target', 'is_bullseye_target'};
 % -- Endpoint Error --
@@ -181,7 +181,7 @@ condition_defs.behavior_plan(5).trial_mask = ...
     {'is_contralateral_target', 'is_image_target'};
 condition_defs.behavior_plan(6).name = 'endpoint_error_bullseyetrials';
 condition_defs.behavior_plan(6).dependent_variable = {'endpoint_error'};
-condition_defs.behavior_plan(6).factors = {'reward', 'probability', 'saliency'};
+condition_defs.behavior_plan(6).factors = {'reward', 'probability', 'salience'};
 condition_defs.behavior_plan(6).trial_mask = ...
     {'is_contralateral_target', 'is_bullseye_target'};
 
@@ -504,13 +504,13 @@ identity_factor(trialInfo.stimType > 2) = {'bullseye'};
 conditions.factors.identity = identity_factor(masterMask);
 
 % Salience Factor
-saliency_factor = cell(size(masterMask));
-saliency_factor(isHighSalience) = {'high'};
-saliency_factor(isLowSalience) = {'low'};
-% For image trials, saliency is not a factor, so we can mark it
+salience_factor = cell(size(masterMask));
+salience_factor(isHighSalience) = {'high'};
+salience_factor(isLowSalience) = {'low'};
+% For image trials, salience is not a factor, so we can mark it
 % as 'neutral' or NaN. For bullseye trials, it is a key factor.
-saliency_factor(is_image_target) = {'neutral'};
-conditions.factors.saliency = saliency_factor(masterMask);
+salience_factor(is_image_target) = {'neutral'};
+conditions.factors.salience = salience_factor(masterMask);
 
 % Reward Factor
 reward_factor = cell(size(masterMask));
