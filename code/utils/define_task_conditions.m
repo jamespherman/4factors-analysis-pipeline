@@ -10,6 +10,10 @@ function [conditions, condition_defs] = define_task_conditions(varargin)
 % 2.  **Bullseye Trials Model:** Analyzes trials with a bullseye
 %     target. Factors: reward, probability, salience.
 %
+% Spatial probability is determined by a fixed, block-contingent
+% experimental design (e.g., Loc 1 is high-prob in Block 1), not by a
+% data-driven calculation from session behavior.
+%
 % It returns a comprehensive analysis plan (`condition_defs`) and,
 % when provided with session data, a struct of logical trial masks
 % (`conditions`) aligned to this two-model approach.
@@ -455,19 +459,19 @@ isNonfaceTarget = (trialInfo.stimType == 2);
 is_image_target = isFaceTarget | isNonfaceTarget;
 is_bullseye_target = (trialInfo.stimType > 2);
 
-% 4. Spatial Probability (Data-Driven)
-% Get target locations for all valid gSac_4factors trials
-validTrialLocs = trialInfo.targetLocIdx(masterMask);
-% Calculate frequency for each unique target location
-[uniqueLocs, ~, locIndices] = unique(validTrialLocs);
-locCounts = accumarray(locIndices, 1);
-medianFreq = median(locCounts);
-% Identify high and low probability locations
-highProbLocs = uniqueLocs(locCounts > medianFreq);
-lowProbLocs = uniqueLocs(locCounts < medianFreq);
-% Create masks based on whether trial's target is in a high/low prob
-isHighProbability = ismember(trialInfo.targetLocIdx, highProbLocs);
-isLowProbability = ismember(trialInfo.targetLocIdx, lowProbLocs);
+% 4. Spatial Probability (Block-Dependent)
+% Defines spatial probability based on a fixed, block-contingent design.
+% This approach ensures that probability is determined by the experimental
+% setup, not calculated from the data, thus avoiding circularity.
+%
+% The rules are:
+% - High-probability: Block 1 -> Loc 1; Block 2 -> Loc 3
+% - Low-probability:  All other locations within the block.
+isHighProbability = (trialInfo.blockNumber == 1 & trialInfo.targetLocIdx == 1) | ...
+                    (trialInfo.blockNumber == 2 & trialInfo.targetLocIdx == 3);
+
+isLowProbability = (trialInfo.blockNumber == 1 & ismember(trialInfo.targetLocIdx, [2, 3, 4])) | ...
+                   (trialInfo.blockNumber == 2 & ismember(trialInfo.targetLocIdx, [1, 2, 4]));
 
 % --- Output Structure ---
 % Filter all logical masks by the masterMask and store in the output.

@@ -24,8 +24,8 @@ All masks within this struct are the same length and have been pre-filtered to i
 -   `.is_nonface_target`: `logical` - `true` for trials where the target was a 'non-face' stimulus.
 -   `.is_image_target`: `logical` - `true` for trials where the target was either a face or a non-face stimulus.
 -   `.is_bullseye_target`: `logical` - `true` for trials where the target was a bullseye stimulus (`stimType > 2`).
--   `.is_high_probability`: `logical` - `true` for trials where the target was in a high-probability spatial location.
--   `.is_low_probability`: `logical` - `true` for trials where the target was in a low-probability spatial location.
+-   `.is_high_probability`: `logical` - `true` for trials where the target was in a high-probability spatial location, as determined by the fixed, block-dependent experimental design (e.g., Loc 1 in Block 1, Loc 3 in Block 2).
+-   `.is_low_probability`: `logical` - `true` for trials where the target was in a low-probability spatial location, as determined by the fixed, block-dependent experimental design.
 
 ### Sub-struct: `.factors`
 
@@ -34,7 +34,7 @@ In addition to the logical masks, the `conditions` struct contains a `.factors` 
 -   `.factors.identity`: `cell` - Contains the labels `'face'`, `'nonface'`, or `'bullseye'` for each trial.
 -   `.factors.saliency`: `cell` - Contains the labels `'high'`, `'low'`, or `'neutral'` for each trial. `'neutral'` corresponds to bullseye trials where salience is not applicable.
 -   `.factors.reward`: `cell` - Contains the labels `'high'` or `'low'` for each trial.
--   `.factors.probability`: `cell` - Contains the labels `'high'` or `'low'` for each trial, based on the data-driven spatial probability.
+-   `.factors.probability`: `cell` - Contains the labels `'high'` or `'low'` for each trial, based on the fixed, block-dependent experimental design.
 
 ### Sub-struct: `.dvs`
 
