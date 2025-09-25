@@ -6,16 +6,18 @@
 % `define_task_conditions.m` as the sole source of truth for
 % determining the structure of the output.
 %
-% The script is designed to be robust to session-to-session
-% variability in analysis outputs. For each analysis type (e.g.,
-% ANOVA, ROC), it first creates a "template" struct containing all
-% possible data fields initialized to default values (e.g., NaN, []).
-% In the main loop, it copies this template for each session,
-% populates it with whatever data is available, and then appends the
-% standardized struct to the final array. This approach guarantees
-% that all structs in the array have the same fields, preventing
-% crashes caused by inconsistent struct fields from different
-% sessions.
+% The script is designed to be robust to session-to-session variability in
+% analysis outputs. It standardizes the aggregation process by ensuring
+% that for each analysis type, the output struct array has a consistent
+% set of fields, even when a given session is missing a particular result.
+%
+% This is achieved using an "assign-on-first-pass, then-append" logic.
+% For the first session of a given brain area, the script directly assigns
+% the analysis result to the aggregated data structure. For all subsequent
+% sessions, it appends the results. If a session is missing a specific
+% analysis, a standardized placeholder struct (or table) is used, which
+% guarantees that the final aggregated array is always valid and prevents
+% crashes from inconsistent field names.
 %
 % The output file contains four top-level variables:
 %   - aggregated_sc_data:  Struct with aggregated data for SC sessions.
@@ -272,31 +274,40 @@ for i = 1:nSessions
             event_name = event_cell{:};
             for plan_item = analysis_plan.roc_plan
 
+                % What's the plan name?
+                plan_name = plan_item.name;
+
+                % Check if source data exists
+                source_exists = ...
+                    isfield(analysis_results, 'roc_comparison') && ...
+                    isfield(analysis_results.roc_comparison, ...
+                    event_name) && ...
+                    isfield(analysis_results.roc_comparison ...
+                    .(event_name), plan_name);
+
                 % Create a copy of the template
                 session_struct = agg_data.roc_comparison.(event_name) ...
                     .(plan_item.name);
                 session_struct.session_id = session_id;
                 session_struct.n_neurons = n_neurons;
 
-                % Check for source data and populate
-                plan_name = plan_item.name;
-                source_exists = ...
-                    isfield(analysis_results, 'roc_comparison') && ...
-                    isfield(analysis_results.roc_comparison, event_name) && ...
-                    isfield(analysis_results.roc_comparison.(event_name), ...
-                    plan_name);
-
+                % if course data exists put it in 'session_struct'
                 if source_exists
                     source_data = analysis_results.roc_comparison ...
                         .(event_name).(plan_name);
                     session_struct.sig = source_data.sig;
                     session_struct.time_vector = source_data.time_vector;
                 end
-                current_array = agg_data.roc_comparison.(event_name) ...
-                    .(plan_name);
-                current_array(end+1) = session_struct;
-                agg_data.roc_comparison.(event_name).(plan_name) = ...
-                    current_array;
+
+                % If this is the 1st session for this brain area, just
+                % assign the data, otherwise append it:
+                if length(session_ids.(lower(brain_area))) == 1
+                    agg_data.roc_comparison.(event_name).(plan_name) ...
+                        = session_struct;
+                else
+                    agg_data.roc_comparison.(event_name).(plan_name)(end+1) ...
+                        = session_struct;
+                end
             end
         end
     end
@@ -307,14 +318,10 @@ for i = 1:nSessions
             event_name = event_cell{:};
             for plan_item = analysis_plan.baseline_plan
 
-                % Create a copy of the template
-                session_struct = agg_data.baseline_comparison ...
-                    .(event_name).(plan_item.name);
-                session_struct.session_id = session_id;
-                session_struct.n_neurons = n_neurons;
-
-                % Check for source data and populate
+                % What's the plan name?
                 plan_name = plan_item.name;
+
+                % Check if source data exists
                 source_exists = ...
                     isfield(analysis_results, 'baseline_comparison') && ...
                     isfield(analysis_results.baseline_comparison, ...
@@ -322,17 +329,29 @@ for i = 1:nSessions
                     isfield(analysis_results.baseline_comparison ...
                     .(event_name), plan_name);
 
+                % Create a copy of the template
+                session_struct = agg_data.baseline_comparison ...
+                    .(event_name).(plan_item.name);
+                session_struct.session_id = session_id;
+                session_struct.n_neurons = n_neurons;
+
+                % if course data exists put it in 'session_struct'
                 if source_exists
                     source_data = analysis_results.baseline_comparison ...
                         .(event_name).(plan_name);
                     session_struct.sig = source_data.sig;
                     session_struct.time_vector = source_data.time_vector;
                 end
-                current_array = agg_data.baseline_comparison ...
-                    .(event_name).(plan_name);
-                current_array(end+1) = session_struct;
-                agg_data.baseline_comparison.(event_name).(plan_name) = ...
-                    current_array;
+
+                % If this is the 1st session for this brain area, just
+                % assign the data, otherwise append it:
+                if length(session_ids.(lower(brain_area))) == 1
+                    agg_data.baseline_comparison.(event_name).(plan_name) ...
+                        = session_struct;
+                else
+                    agg_data.baseline_comparison.(event_name).(plan_name)(end+1) ...
+                        = session_struct;
+                end
             end
         end
     end
@@ -349,10 +368,17 @@ for i = 1:nSessions
                     session_table.session_id = repmat({session_id}, ...
                         height(session_table), 1);
 
-                    current_table = ...
-                        agg_data.behavioral_results.(analysis_name);
-                    agg_data.behavioral_results.(analysis_name) = ...
-                        [current_table; session_table];
+                    % If this is the 1st session for this brain area, just
+                    % assign the data, otherwise append it:
+                    if length(session_ids.(lower(brain_area))) == 1
+                        agg_data.behavioral_results.(analysis_name) = ...
+                            session_table;
+                    else
+                        current_table = ...
+                            agg_data.behavioral_results.(analysis_name);
+                        agg_data.behavioral_results.(analysis_name) = ...
+                            [current_table; session_table];
+                    end
                 end
             end
         end
@@ -380,9 +406,16 @@ for i = 1:nSessions
                 session_struct.accuracy = source_data.accuracy;
                 session_struct.accuracy_ci = source_data.accuracy_ci;
             end
-            current_array = agg_data.population_decoding.(test_name);
-            current_array(end+1) = session_struct;
-            agg_data.population_decoding.(test_name) = current_array;
+
+            % If this is the 1st session for this brain area, just
+            % assign the data, otherwise append it:
+            if length(session_ids.(lower(brain_area))) == 1
+                agg_data.population_decoding.(test_name) = ...
+                    session_struct;
+            else
+                agg_data.population_decoding.(test_name)(end+1) = ...
+                    session_struct;
+            end
         end
     end
 
