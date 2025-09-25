@@ -1,18 +1,21 @@
 %% aggregate_analysis_results.m
 %
-% This script aggregates single-session analysis results into a "plot-ready"
-% data structure, `aggregated_analysis_data.mat`. It is entirely "plan-driven,"
-% meaning it uses the `analysis_plan` from `define_task_conditions.m` as the
-% sole source of truth for determining the structure of the output.
+% This script aggregates single-session analysis results into a
+% "plot-ready" data structure, `aggregated_analysis_data.mat`. It is
+% entirely "plan-driven," meaning it uses the `analysis_plan` from
+% `define_task_conditions.m` as the sole source of truth for
+% determining the structure of the output.
 %
-% The script is designed to be robust to session-to-session variability in
-% analysis outputs. For each analysis type (e.g., ANOVA, ROC), it first
-% creates a "template" struct containing all possible data fields initialized
-% to default values (e.g., NaN, []). In the main loop, it copies this template
-% for each session, populates it with whatever data is available, and then
-% appends the standardized struct to the final array. This approach guarantees
-% that all structs in the array have the same fields, preventing crashes caused
-% by inconsistent struct fields from different sessions.
+% The script is designed to be robust to session-to-session
+% variability in analysis outputs. For each analysis type (e.g.,
+% ANOVA, ROC), it first creates a "template" struct containing all
+% possible data fields initialized to default values (e.g., NaN, []).
+% In the main loop, it copies this template for each session,
+% populates it with whatever data is available, and then appends the
+% standardized struct to the final array. This approach guarantees
+% that all structs in the array have the same fields, preventing
+% crashes caused by inconsistent struct fields from different
+% sessions.
 %
 % The output file contains four top-level variables:
 %   - aggregated_sc_data:  Struct with aggregated data for SC sessions.
@@ -22,18 +25,19 @@
 %
 % The script operates in three main stages:
 %   1. Initialization: It defines template structs for each analysis and
-%      builds the nested structure of the output variables based on the plan.
-%   2. Aggregation Loop: It iterates through each session, copies the relevant
-%      template, populates it with the session's analysis results, and appends
-%      it to the corresponding struct array.
+%      builds the nested structure of the output variables based on the
+%      plan.
+%   2. Aggregation Loop: It iterates through each session, copies the
+%      relevant template, populates it with the session's analysis
+%      results, and appends it to the corresponding struct array.
 %   3. Final Save: It saves the populated top-level variables to disk.
 %
 % Author: Jules
-% Date: 2025-09-24 (Refactored to use a template-based approach for robust aggregation)
+% Date: 2025-09-24 (Refactored to use a template-based approach for
+% robust aggregation)
 %
-
-function [aggregated_sc_data, aggregated_snc_data] = aggregate_analysis_results()
-
+function [aggregated_sc_data, aggregated_snc_data] ...
+    = aggregate_analysis_results()
 % Start timer and define in-line function to give user feedback:
 tic;
 giveFeed = @(x)disp([num2str(round(toc, 1)) 's - ' x]);
@@ -57,7 +61,6 @@ giveFeed('Manifest and analysis plan loaded.');
 
 %% Initialize Output Structures
 giveFeed('Initializing output data structures based on analysis plan...');
-
 % Initialize the main structs for each brain area
 aggregated_sc_data = struct();
 aggregated_snc_data = struct();
@@ -82,10 +85,9 @@ for area_cell = keys(aggregated_data_map)
         for plan_item = analysis_plan.anova_plan
             if ~plan_item.run, continue; end
             agg_data.anova_results.(plan_item.name) = struct();
-
             % Define the template struct for this ANOVA
-            template_struct = struct('session_id', '', 'n_neurons', NaN, 'time_vector', []);
-
+            template_struct = struct('session_id', '', 'n_neurons', NaN, ...
+                                     'time_vector', []);
             % Generate all possible interaction terms from factors
             factors = plan_item.factors;
             num_factors = length(factors);
@@ -96,19 +98,20 @@ for area_cell = keys(aggregated_data_map)
                     all_terms{end+1} = strjoin(combs(i,:), '*');
                 end
             end
-
             for term_cell = all_terms
                 term_name = matlab.lang.makeValidName(term_cell{:});
                 template_struct.(['p_' term_name]) = [];
                 template_struct.(['f_' term_name]) = [];
             end
-
             for event_cell = analysis_plan.events
                 event_name = event_cell{:};
                 % Initialize the struct array with a template
-                agg_data.anova_results.(plan_item.name).(event_name) = struct([]);
+                agg_data.anova_results.(plan_item.name).(event_name) = ...
+                    struct([]);
                 % Store the template for use in the loop
-                agg_data.anova_results.(plan_item.name).([event_name '_template']) = template_struct;
+                template_field = [event_name '_template'];
+                agg_data.anova_results.(plan_item.name).(template_field) ...
+                    = template_struct;
             end
         end
     end
@@ -116,13 +119,17 @@ for area_cell = keys(aggregated_data_map)
     % ROC Comparison
     if isfield(analysis_plan, 'roc_plan')
         agg_data.roc_comparison = struct();
-        template_struct = struct('sig', [], 'time_vector', [], 'session_id', '', 'n_neurons', NaN);
+        template_struct = struct('sig', [], 'time_vector', [], ...
+            'session_id', '', 'n_neurons', NaN);
         for event_cell = analysis_plan.events
             event_name = event_cell{:};
             agg_data.roc_comparison.(event_name) = struct();
             for plan_item = analysis_plan.roc_plan
-                agg_data.roc_comparison.(event_name).(plan_item.name) = struct([]);
-                agg_data.roc_comparison.(event_name).([plan_item.name '_template']) = template_struct;
+                agg_data.roc_comparison.(event_name).(plan_item.name) = ...
+                    struct([]);
+                template_field = [plan_item.name '_template'];
+                agg_data.roc_comparison.(event_name).(template_field) = ...
+                    template_struct;
             end
         end
     end
@@ -130,13 +137,18 @@ for area_cell = keys(aggregated_data_map)
     % Baseline Comparison
     if isfield(analysis_plan, 'baseline_plan')
         agg_data.baseline_comparison = struct();
-        template_struct = struct('sig', [], 'time_vector', [], 'session_id', '', 'n_neurons', NaN);
+        template_struct = struct('sig', [], 'time_vector', [], ...
+            'session_id', '', 'n_neurons', NaN);
         for event_cell = analysis_plan.events
             event_name = event_cell{:};
             agg_data.baseline_comparison.(event_name) = struct();
             for plan_item = analysis_plan.baseline_plan
-                agg_data.baseline_comparison.(event_name).(plan_item.name) = struct([]);
-                agg_data.baseline_comparison.(event_name).([plan_item.name '_template']) = template_struct;
+                plan_name = plan_item.name;
+                agg_data.baseline_comparison.(event_name).(plan_name) = ...
+                    struct([]);
+                template_field = [plan_name '_template'];
+                agg_data.baseline_comparison.(event_name) ...
+                    .(template_field) = template_struct;
             end
         end
     end
@@ -152,42 +164,51 @@ for area_cell = keys(aggregated_data_map)
 
     % 3. Population Decoding
     % The target structure is a struct array per test.
-    if isfield(analysis_plan, 'decoding_plan') && isfield(analysis_plan.decoding_plan, 'testing_plan')
+    if isfield(analysis_plan, 'decoding_plan') && ...
+            isfield(analysis_plan.decoding_plan, 'testing_plan')
         agg_data.population_decoding = struct();
-        template_struct = struct('accuracy', NaN, 'accuracy_ci', [NaN, NaN], 'session_id', '');
+        template_struct = struct('accuracy', NaN, 'accuracy_ci', ...
+            [NaN, NaN], 'session_id', '');
         for test_item = analysis_plan.decoding_plan.testing_plan
-            agg_data.population_decoding.(test_item.test_name) = struct([]);
-            agg_data.population_decoding.([test_item.test_name '_template']) = template_struct;
+            test_name = test_item.test_name;
+            agg_data.population_decoding.(test_name) = struct([]);
+            template_field = [test_name '_template'];
+            agg_data.population_decoding.(template_field) = ...
+                template_struct;
         end
     end
-
     aggregated_data_map(area) = agg_data;
 end
-
 giveFeed('Data structures initialized.');
 
 %% Main Aggregation Loop
-complete_sessions = manifest(strcmp(manifest.analysis_status, 'complete'), :);
+complete_sessions = manifest(strcmp(manifest.analysis_status, ...
+    'complete'), :);
 nSessions = height(complete_sessions);
-giveFeed(sprintf('Starting aggregation for %d completed sessions.', nSessions));
+giveFeed(sprintf('Starting aggregation for %d completed sessions.', ...
+    nSessions));
 
 for i = 1:nSessions
     session_info = complete_sessions(i, :);
     session_id = session_info.unique_id{:};
     brain_area = session_info.brain_area{:};
-
-    giveFeed(sprintf('Processing session %d/%d: %s (%s)', i, nSessions, session_id, brain_area));
+    giveFeed(sprintf('Processing session %d/%d: %s (%s)', ...
+        i, nSessions, session_id, brain_area));
 
     % Load session data
-    session_data_path = fullfile(project_root, 'data', 'processed', session_id, [session_id '_session_data.mat']);
+    session_data_path = fullfile(project_root, 'data', 'processed', ...
+        session_id, [session_id '_session_data.mat']);
     if ~exist(session_data_path, 'file')
-        warning('aggregate_analysis_results:fileNotFound', 'Could not find session_data.mat for %s. Skipping.', session_id);
+        warning('aggregate_analysis_results:fileNotFound', ...
+            ['Could not find session_data.mat for %s. ' ...
+            'Skipping.'], session_id);
         continue;
     end
     data = load(session_data_path, 'session_data');
-
-    if ~isfield(data, 'session_data') || ~isfield(data.session_data, 'analysis')
-        warning('aggregate_analysis_results:noAnalysis', 'No analysis field in data for %s. Skipping.', session_id);
+    if ~isfield(data, 'session_data') || ...
+            ~isfield(data.session_data, 'analysis')
+        warning('aggregate_analysis_results:noAnalysis', ...
+            'No analysis field in data for %s. Skipping.', session_id);
         continue;
     end
     analysis_results = data.session_data.analysis;
@@ -204,39 +225,47 @@ for i = 1:nSessions
     end
 
     % --- 1. Aggregate Time-Resolved Analyses ---
-
     % ANOVA Results
     if isfield(agg_data, 'anova_results')
         for plan_item = analysis_plan.anova_plan
             if ~plan_item.run, continue; end
             for event_cell = analysis_plan.events
                 event_name = event_cell{:};
-
                 % Create a copy of the template
-                session_struct = agg_data.anova_results.(plan_item.name).([event_name '_template']);
+                template_field = [event_name '_template'];
+                session_struct = ...
+                    agg_data.anova_results.(plan_item.name) ...
+                    .(template_field);
                 session_struct.session_id = session_id;
                 session_struct.n_neurons = n_neurons;
 
                 % Check if source data exists
-                source_exists = isfield(analysis_results, 'anova_results') && ...
-                                isfield(analysis_results.anova_results, plan_item.name) && ...
-                                isfield(analysis_results.anova_results.(plan_item.name), event_name);
-
+                source_exists = ...
+                    isfield(analysis_results, 'anova_results') && ...
+                    isfield(analysis_results.anova_results, ...
+                    plan_item.name) && ...
+                    isfield(analysis_results.anova_results ...
+                    .(plan_item.name), event_name);
+                
                 if source_exists
-                    source_data = analysis_results.anova_results.(plan_item.name).(event_name);
-
-                    % Get all fields from the source and populate the template
+                    source_data = analysis_results.anova_results ...
+                        .(plan_item.name).(event_name);
+                    % Get all fields from the source and populate
                     source_fields = fieldnames(source_data);
                     for f_cell = source_fields'
                         f_name = f_cell{:};
                         if isfield(session_struct, f_name)
-                            session_struct.(f_name) = source_data.(f_name);
+                            session_struct.(f_name) = ...
+                                source_data.(f_name);
                         end
                     end
                 end
-
                 % Append the standardized struct
-                agg_data.anova_results.(plan_item.name).(event_name)(end+1) = session_struct;
+                current_array = agg_data.anova_results ...
+                    .(plan_item.name).(event_name);
+                current_array(end+1) = session_struct;
+                agg_data.anova_results.(plan_item.name).(event_name) = ...
+                    current_array;
             end
         end
     end
@@ -247,19 +276,31 @@ for i = 1:nSessions
             event_name = event_cell{:};
             for plan_item = analysis_plan.roc_plan
                 % Create a copy of the template
-                session_struct = agg_data.roc_comparison.(event_name).([plan_item.name '_template']);
+                template_field = [plan_item.name '_template'];
+                session_struct = agg_data.roc_comparison.(event_name) ...
+                    .(template_field);
                 session_struct.session_id = session_id;
                 session_struct.n_neurons = n_neurons;
-
+                
                 % Check for source data and populate
-                if isfield(analysis_results, 'roc_comparison') && ...
-                   isfield(analysis_results.roc_comparison, event_name) && ...
-                   isfield(analysis_results.roc_comparison.(event_name), plan_item.name)
-                    source_data = analysis_results.roc_comparison.(event_name).(plan_item.name);
+                plan_name = plan_item.name;
+                source_exists = ...
+                    isfield(analysis_results, 'roc_comparison') && ...
+                    isfield(analysis_results.roc_comparison, event_name) && ...
+                    isfield(analysis_results.roc_comparison.(event_name), ...
+                    plan_name);
+
+                if source_exists
+                    source_data = analysis_results.roc_comparison ...
+                        .(event_name).(plan_name);
                     session_struct.sig = source_data.sig;
                     session_struct.time_vector = source_data.time_vector;
                 end
-                agg_data.roc_comparison.(event_name).(plan_item.name)(end+1) = session_struct;
+                current_array = agg_data.roc_comparison.(event_name) ...
+                    .(plan_name);
+                current_array(end+1) = session_struct;
+                agg_data.roc_comparison.(event_name).(plan_name) = ...
+                    current_array;
             end
         end
     end
@@ -270,65 +311,87 @@ for i = 1:nSessions
             event_name = event_cell{:};
             for plan_item = analysis_plan.baseline_plan
                 % Create a copy of the template
-                session_struct = agg_data.baseline_comparison.(event_name).([plan_item.name '_template']);
+                template_field = [plan_item.name '_template'];
+                session_struct = agg_data.baseline_comparison ...
+                    .(event_name).(template_field);
                 session_struct.session_id = session_id;
                 session_struct.n_neurons = n_neurons;
 
                 % Check for source data and populate
-                if isfield(analysis_results, 'baseline_comparison') && ...
-                   isfield(analysis_results.baseline_comparison, event_name) && ...
-                   isfield(analysis_results.baseline_comparison.(event_name), plan_item.name)
-                    source_data = analysis_results.baseline_comparison.(event_name).(plan_item.name);
+                plan_name = plan_item.name;
+                source_exists = ...
+                   isfield(analysis_results, 'baseline_comparison') && ...
+                   isfield(analysis_results.baseline_comparison, ...
+                       event_name) && ...
+                   isfield(analysis_results.baseline_comparison ...
+                       .(event_name), plan_name);
+
+                if source_exists
+                    source_data = analysis_results.baseline_comparison ...
+                        .(event_name).(plan_name);
                     session_struct.sig = source_data.sig;
                     session_struct.time_vector = source_data.time_vector;
                 end
-                agg_data.baseline_comparison.(event_name).(plan_item.name)(end+1) = session_struct;
+                current_array = agg_data.baseline_comparison ...
+                    .(event_name).(plan_name);
+                current_array(end+1) = session_struct;
+                agg_data.baseline_comparison.(event_name).(plan_name) = ...
+                    current_array;
             end
         end
     end
 
     % --- 2. Aggregate Behavioral Results ---
-    if isfield(agg_data, 'behavioral_results') && isfield(analysis_results, 'behavioral_results')
+    if isfield(agg_data, 'behavioral_results') && ...
+            isfield(analysis_results, 'behavioral_results')
         for plan_item = analysis_plan.behavior_plan
             analysis_name = plan_item.name;
             if isfield(analysis_results.behavioral_results, analysis_name)
-                session_table = analysis_results.behavioral_results.(analysis_name);
+                session_table = ...
+                    analysis_results.behavioral_results.(analysis_name);
                 if ~isempty(session_table)
-                    session_table.session_id = repmat({session_id}, height(session_table), 1);
-                    agg_data.behavioral_results.(analysis_name) = [agg_data.behavioral_results.(analysis_name); session_table];
+                    session_table.session_id = ...
+                        repmat({session_id}, height(session_table), 1);
+                    current_table = ...
+                        agg_data.behavioral_results.(analysis_name);
+                    agg_data.behavioral_results.(analysis_name) = ...
+                        [current_table; session_table];
                 end
             end
         end
     end
 
     % --- 3. Aggregate Population Decoding Results ---
-    if isfield(agg_data, 'population_decoding') && isfield(analysis_results, 'population_decoding')
+    if isfield(agg_data, 'population_decoding') && ...
+            isfield(analysis_results, 'population_decoding')
         for test_item = analysis_plan.decoding_plan.testing_plan
             test_name = test_item.test_name;
-
             % Create a copy of the template
-            session_struct = agg_data.population_decoding.([test_name '_template']);
+            template_field = [test_name '_template'];
+            session_struct = ...
+                agg_data.population_decoding.(template_field);
             session_struct.session_id = session_id;
 
             % Check for source data and populate
             if isfield(analysis_results.population_decoding, test_name)
-                source_data = analysis_results.population_decoding.(test_name);
+                source_data = ...
+                    analysis_results.population_decoding.(test_name);
                 session_struct.accuracy = source_data.accuracy;
                 session_struct.accuracy_ci = source_data.accuracy_ci;
             end
-            agg_data.population_decoding.(test_name)(end+1) = session_struct;
+            current_array = agg_data.population_decoding.(test_name);
+            current_array(end+1) = session_struct;
+            agg_data.population_decoding.(test_name) = current_array;
         end
     end
-
+    
     % Update the map with the modified struct
     aggregated_data_map(brain_area) = agg_data;
 end
-
 giveFeed('All sessions processed.');
 
 %% Finalize and Save
 giveFeed('Saving aggregated data to file...');
-
 % Retrieve the final structs from the map
 aggregated_sc_data = aggregated_data_map('SC');
 aggregated_snc_data = aggregated_data_map('SNc');
@@ -349,5 +412,4 @@ save(save_path, ...
     '-v7.3');
 
 giveFeed(['Aggregation complete. Output saved to: ' save_path]);
-
 end
