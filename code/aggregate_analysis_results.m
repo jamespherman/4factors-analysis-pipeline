@@ -218,18 +218,9 @@ for i = 1:nSessions
         for plan_item = analysis_plan.anova_plan
             if ~plan_item.run, continue; end
             for event_cell = analysis_plan.events
+
+                % What's the current event name?
                 event_name = event_cell{:};
-
-                % Create a copy of the template
-                isession_struct = ...
-                    agg_data.anova_results.(plan_item.name).(event_name);
-
-                try
-                session_struct.session_id = session_id;
-                session_struct.n_neurons = n_neurons;
-                catch me
-                    keyboard
-                end
 
                 % Check if source data exists
                 source_exists = ...
@@ -239,27 +230,30 @@ for i = 1:nSessions
                     isfield(analysis_results.anova_results ...
                     .(plan_item.name), event_name);
 
+                % if course data exists put it in 'session_struct'
                 if source_exists
-                    source_data = analysis_results.anova_results ...
+                    session_struct = analysis_results.anova_results ...
                         .(plan_item.name).(event_name);
-                    % Get all fields from the source and populate
-                    source_fields = fieldnames(source_data);
-                    for f_cell = source_fields'
-                        f_name = f_cell{:};
-                        if isfield(session_struct, f_name)
-                            session_struct.(f_name) = ...
-                                source_data.(f_name);
-                        end
+
+                    try
+                        session_struct.session_id = session_id;
+                        session_struct.n_neurons = n_neurons;
+                    catch me
+                        keyboard
                     end
                 end
 
                 try
-                    % Append the standardized struct
-                    current_array = agg_data.anova_results ...
-                        .(plan_item.name).(event_name);
-                    current_array(end+1) = session_struct;
-                    agg_data.anova_results.(plan_item.name).(event_name) = ...
-                        current_array;
+                    % If this is the 1st session for this brain area, just
+                    % assign the data, otherwise append it:
+                    if length(session_ids.(lower(brain_area))) == 1
+                        agg_data.anova_results.(plan_item.name).(...
+                            event_name) = session_struct;
+                    else
+                        agg_data.anova_results.(plan_item.name).(...
+                            event_name)(end+1) = session_struct;
+                    end
+                    
                 catch me
                     keyboard
                 end
