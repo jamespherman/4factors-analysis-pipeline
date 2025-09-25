@@ -32,7 +32,7 @@
 % Date: 2025-09-24 (Refactored to use a template-based approach for robust aggregation)
 %
 
-function aggregate_analysis_results()
+function [aggregated_sc_data, aggregated_snc_data] = aggregate_analysis_results()
 
 % Start timer and define in-line function to give user feedback:
 tic;
@@ -79,7 +79,7 @@ for area_cell = keys(aggregated_data_map)
     % ANOVA Results
     if isfield(analysis_plan, 'anova_plan')
         agg_data.anova_results = struct();
-        for plan_item = analysis_plan.anova_plan'
+        for plan_item = analysis_plan.anova_plan
             if ~plan_item.run, continue; end
             agg_data.anova_results.(plan_item.name) = struct();
 
@@ -120,7 +120,7 @@ for area_cell = keys(aggregated_data_map)
         for event_cell = analysis_plan.events
             event_name = event_cell{:};
             agg_data.roc_comparison.(event_name) = struct();
-            for plan_item = analysis_plan.roc_plan'
+            for plan_item = analysis_plan.roc_plan
                 agg_data.roc_comparison.(event_name).(plan_item.name) = struct([]);
                 agg_data.roc_comparison.(event_name).([plan_item.name '_template']) = template_struct;
             end
@@ -134,7 +134,7 @@ for area_cell = keys(aggregated_data_map)
         for event_cell = analysis_plan.events
             event_name = event_cell{:};
             agg_data.baseline_comparison.(event_name) = struct();
-            for plan_item = analysis_plan.baseline_plan'
+            for plan_item = analysis_plan.baseline_plan
                 agg_data.baseline_comparison.(event_name).(plan_item.name) = struct([]);
                 agg_data.baseline_comparison.(event_name).([plan_item.name '_template']) = template_struct;
             end
@@ -145,7 +145,7 @@ for area_cell = keys(aggregated_data_map)
     % The target structure is a single concatenated table per analysis.
     if isfield(analysis_plan, 'behavior_plan')
         agg_data.behavioral_results = struct();
-        for plan_item = analysis_plan.behavior_plan'
+        for plan_item = analysis_plan.behavior_plan
             agg_data.behavioral_results.(plan_item.name) = table();
         end
     end
@@ -155,7 +155,7 @@ for area_cell = keys(aggregated_data_map)
     if isfield(analysis_plan, 'decoding_plan') && isfield(analysis_plan.decoding_plan, 'testing_plan')
         agg_data.population_decoding = struct();
         template_struct = struct('accuracy', NaN, 'accuracy_ci', [NaN, NaN], 'session_id', '');
-        for test_item = analysis_plan.decoding_plan.testing_plan'
+        for test_item = analysis_plan.decoding_plan.testing_plan
             agg_data.population_decoding.(test_item.test_name) = struct([]);
             agg_data.population_decoding.([test_item.test_name '_template']) = template_struct;
         end
@@ -207,7 +207,7 @@ for i = 1:nSessions
 
     % ANOVA Results
     if isfield(agg_data, 'anova_results')
-        for plan_item = analysis_plan.anova_plan'
+        for plan_item = analysis_plan.anova_plan
             if ~plan_item.run, continue; end
             for event_cell = analysis_plan.events
                 event_name = event_cell{:};
@@ -245,7 +245,7 @@ for i = 1:nSessions
     if isfield(agg_data, 'roc_comparison')
         for event_cell = analysis_plan.events
             event_name = event_cell{:};
-            for plan_item = analysis_plan.roc_plan'
+            for plan_item = analysis_plan.roc_plan
                 % Create a copy of the template
                 session_struct = agg_data.roc_comparison.(event_name).([plan_item.name '_template']);
                 session_struct.session_id = session_id;
@@ -268,7 +268,7 @@ for i = 1:nSessions
     if isfield(agg_data, 'baseline_comparison')
         for event_cell = analysis_plan.events
             event_name = event_cell{:};
-            for plan_item = analysis_plan.baseline_plan'
+            for plan_item = analysis_plan.baseline_plan
                 % Create a copy of the template
                 session_struct = agg_data.baseline_comparison.(event_name).([plan_item.name '_template']);
                 session_struct.session_id = session_id;
@@ -289,7 +289,7 @@ for i = 1:nSessions
 
     % --- 2. Aggregate Behavioral Results ---
     if isfield(agg_data, 'behavioral_results') && isfield(analysis_results, 'behavioral_results')
-        for plan_item = analysis_plan.behavior_plan'
+        for plan_item = analysis_plan.behavior_plan
             analysis_name = plan_item.name;
             if isfield(analysis_results.behavioral_results, analysis_name)
                 session_table = analysis_results.behavioral_results.(analysis_name);
@@ -303,7 +303,7 @@ for i = 1:nSessions
 
     % --- 3. Aggregate Population Decoding Results ---
     if isfield(agg_data, 'population_decoding') && isfield(analysis_results, 'population_decoding')
-        for test_item = analysis_plan.decoding_plan.testing_plan'
+        for test_item = analysis_plan.decoding_plan.testing_plan
             test_name = test_item.test_name;
 
             % Create a copy of the template
