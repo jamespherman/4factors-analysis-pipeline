@@ -25,7 +25,7 @@ aggFileName = fullfile(project_root, 'data', 'processed', ...
 
 % Load analysis plan, which is needed for some plots.
 disp('Defining analysis plan...');
-analysis_plan = define_task_conditions();
+[~, analysis_plan] = define_task_conditions();
 
 % Load aggregated data
 disp('Loading aggregated analysis data...');
@@ -48,7 +48,7 @@ for i = 1:length(brain_areas)
     plot_aggregated_roc_comparison(aggregated_data, brain_area_name);
 
     % Generate aggregated ANOVA plot
-    plot_aggregated_anova(aggregated_data, brain_area_name);
+    plot_aggregated_anova(aggregated_data, brain_area_name, analysis_plan);
 
     % Generate aggregated baseline comparison plot
     plot_aggregated_baseline_comparison(aggregated_data, brain_area_name);

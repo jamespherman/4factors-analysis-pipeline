@@ -38,21 +38,43 @@ if ~isfield(aggregated_data, 'anova_results')
 end
 
 %% Dynamically Determine Plot Layout from Analysis Plan
-% This section replaces the previously hardcoded 'effect_terms'.
-% It constructs the terms dynamically based on the analysis_plan provided.
-anova_plan = analysis_plan.anova_models;
+anova_plan = analysis_plan.anova_plan;
 plot_layout = {};
+
 for i_model = 1:length(anova_plan)
     model_name = anova_plan(i_model).name;
-    model_label = anova_plan(i_model).label;
+    
+    % --- Start of Corrected Logic ---
+    
+    % 1. Derive a label from the model name
+    if contains(model_name, 'image')
+        model_label = 'Image';
+    elseif contains(model_name, 'bullseye')
+        model_label = 'Bullseye';
+    else
+        model_label = 'Model';
+    end
 
-    for i_term = 1:length(anova_plan(i_model).effects)
-        term = anova_plan(i_model).effects{i_term};
-        p_field = ['p_', strrep(term, ':', '_')];
+    % 2. Dynamically generate all possible ANOVA terms from the .factors field
+    factors = anova_plan(i_model).factors;
+    all_terms = {};
+    for k = 1:length(factors)
+        combs = nchoosek(factors, k);
+        for i = 1:size(combs, 1)
+            all_terms{end+1} = strjoin(combs(i,:), ':');
+        end
+    end
+    
+    % --- End of Corrected Logic ---
+
+    for i_term = 1:length(all_terms)
+        term = all_terms{i_term};
+        % Create the p-value field name, replacing ':' with '_' for struct compatibility
+        p_field = ['p_', matlab.lang.makeValidName(strrep(term, ':', '_'))];
         label = sprintf('%s (%s)', term, model_label);
         plot_layout = [plot_layout; {label, p_field, model_name}];
     end
-
+    
     % Add a separator between models if there are multiple
     if i_model < length(anova_plan)
         plot_layout = [plot_layout; {'---', '', ''}];
@@ -65,7 +87,8 @@ n_cols = length(event_names);
 
 fig = figure('Position', [100, 100, 300 * n_cols, 150 * n_rows], 'Color', 'w');
 h_axes = gobjects(n_rows, n_cols);
-colors = richColors(2);
+colors = richColors;
+colors = colors([6, 12], :);
 
 %% Plotting Loop
 for i_row = 1:n_rows

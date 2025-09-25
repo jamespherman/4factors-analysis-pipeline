@@ -243,11 +243,6 @@ for i = 1:nSessions
                     catch me
                         keyboard
                     end
-                else
-                    % The new part: create a standardized placeholder when data is missing
-                    session_struct = create_placeholder_anova_struct(plan_item); % Using a helper function
-                    session_struct.session_id = session_id;
-                    session_struct.n_neurons = n_neurons; % Still record how many neurons there were
                 end
 
                 try
@@ -285,18 +280,12 @@ for i = 1:nSessions
                     isfield(analysis_results.roc_comparison ...
                     .(event_name), plan_name);
 
-                % Create a copy of the template
-                session_struct = agg_data.roc_comparison.(event_name) ...
-                    .(plan_item.name);
-                session_struct.session_id = session_id;
-                session_struct.n_neurons = n_neurons;
-
                 % if course data exists put it in 'session_struct'
                 if source_exists
-                    source_data = analysis_results.roc_comparison ...
+                    session_struct = analysis_results.roc_comparison ...
                         .(event_name).(plan_name);
-                    session_struct.sig = source_data.sig;
-                    session_struct.time_vector = source_data.time_vector;
+                    session_struct.session_id = session_id;
+                    session_struct.n_neurons = n_neurons;
                 end
 
                 % If this is the 1st session for this brain area, just
@@ -305,7 +294,8 @@ for i = 1:nSessions
                     agg_data.roc_comparison.(event_name).(plan_name) ...
                         = session_struct;
                 else
-                    agg_data.roc_comparison.(event_name).(plan_name)(end+1) ...
+                    agg_data.roc_comparison.(event_name).(plan_name)(...
+                        end+1) ...
                         = session_struct;
                 end
             end
@@ -329,18 +319,14 @@ for i = 1:nSessions
                     isfield(analysis_results.baseline_comparison ...
                     .(event_name), plan_name);
 
-                % Create a copy of the template
-                session_struct = agg_data.baseline_comparison ...
-                    .(event_name).(plan_item.name);
-                session_struct.session_id = session_id;
-                session_struct.n_neurons = n_neurons;
-
-                % if course data exists put it in 'session_struct'
+                % if sourse data exists put it in 'session_struct'
                 if source_exists
-                    source_data = analysis_results.baseline_comparison ...
+                    session_struct = ...
+                        analysis_results.baseline_comparison ...
                         .(event_name).(plan_name);
-                    session_struct.sig = source_data.sig;
-                    session_struct.time_vector = source_data.time_vector;
+                    session_struct.session_id = session_id;
+                    session_struct.n_neurons = n_neurons;
+
                 end
 
                 % If this is the 1st session for this brain area, just
@@ -394,17 +380,11 @@ for i = 1:nSessions
             % What's the 'test name'?
             test_name = test_item.test_name;
 
-            % Create a copy of the template
-            session_struct = ...
-                agg_data.population_decoding.(test_name);
-            session_struct.session_id = session_id;
-
             % Check for source data and populate
             if isfield(analysis_results.population_decoding, test_name)
-                source_data = ...
+                session_struct = ...
                     analysis_results.population_decoding.(test_name);
-                session_struct.accuracy = source_data.accuracy;
-                session_struct.accuracy_ci = source_data.accuracy_ci;
+                session_struct.session_id = session_id;
             end
 
             % If this is the 1st session for this brain area, just
