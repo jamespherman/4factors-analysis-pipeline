@@ -241,6 +241,11 @@ for i = 1:nSessions
                     catch me
                         keyboard
                     end
+                else
+                    % The new part: create a standardized placeholder when data is missing
+                    session_struct = create_placeholder_anova_struct(plan_item); % Using a helper function
+                    session_struct.session_id = session_id;
+                    session_struct.n_neurons = n_neurons; % Still record how many neurons there were
                 end
 
                 try
@@ -253,7 +258,7 @@ for i = 1:nSessions
                         agg_data.anova_results.(plan_item.name).(...
                             event_name)(end+1) = session_struct;
                     end
-                    
+
                 catch me
                     keyboard
                 end
@@ -341,8 +346,8 @@ for i = 1:nSessions
                 session_table = dataset2table(...
                     analysis_results.behavioral_results.(analysis_name));
                 if ~isempty(session_table)
-                        session_table.session_id = repmat({session_id}, ...
-                            height(session_table), 1);
+                    session_table.session_id = repmat({session_id}, ...
+                        height(session_table), 1);
 
                     current_table = ...
                         agg_data.behavioral_results.(analysis_name);
