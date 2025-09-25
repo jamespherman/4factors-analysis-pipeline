@@ -58,7 +58,8 @@ function analysis_results = analyze_roc_comparison(core_data, ...
     cond2_mask = conditions.(cond2_name);
 
     % Apply an overall trial mask if specified
-    if isfield(roc_plan_item, 'trial_mask') && ~isempty(roc_plan_item.trial_mask)
+    if isfield(roc_plan_item, 'trial_mask') && ~isempty(...
+            roc_plan_item.trial_mask)
         if isfield(conditions, roc_plan_item.trial_mask)
             trial_mask = conditions.(roc_plan_item.trial_mask);
             cond1_mask = cond1_mask & trial_mask;

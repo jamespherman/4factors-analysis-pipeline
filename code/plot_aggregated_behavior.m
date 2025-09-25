@@ -49,7 +49,7 @@ all_effects = {};
 for i = 1:length(all_analysis_names)
     if isfield(aggregated_data.behavioral_results, all_analysis_names{i})
         tbl = aggregated_data.behavioral_results.(all_analysis_names{i});
-        all_effects = union(all_effects, tbl.Effect);
+        all_effects = union(all_effects, tbl.Term);
     end
 end
 catch me
@@ -63,7 +63,7 @@ interaction_effects = all_effects(contains(all_effects, ':'));
 n_cols = 2; % Main Effects, Interaction Effects
 fig = figure('Position', [100, 100, 800, 300 * n_rows], 'Color', 'w');
 h_axes = gobjects(n_rows, n_cols);
-colors = richColors(n_models); % Use the project's standard palette
+colors = parula(n_models); % Use the project's standard palette
 
 %% Plotting Loop
 for i_row = 1:n_rows
@@ -95,7 +95,7 @@ for i_row = 1:n_rows
             
             plan_idx = find(strcmp({behavior_plan.name}, analysis_name));
             if ismember(effect_name, behavior_plan(plan_idx).factors)
-                sig_sessions = unique(tbl.session_id(strcmp(tbl.Effect, effect_name) & tbl.pValue < 0.05));
+                sig_sessions = unique(tbl.session_id(strcmp(tbl.Term, effect_name) & tbl.pValue < 0.05));
                 proportions_main(i_model, i_effect) = numel(sig_sessions) / n_total_sessions;
             end
         end
@@ -135,7 +135,7 @@ for i_row = 1:n_rows
             interaction_factors = strsplit(effect_name, ':');
             
             if all(ismember(interaction_factors, model_factors))
-                sig_sessions = unique(tbl.session_id(strcmp(tbl.Effect, effect_name) & tbl.pValue < 0.05));
+                sig_sessions = unique(tbl.session_id(strcmp(tbl.Term, effect_name) & tbl.pValue < 0.05));
                 proportions_int(i_model, i_effect) = numel(sig_sessions) / n_total_sessions;
             end
         end
