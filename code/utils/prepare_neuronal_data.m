@@ -20,8 +20,8 @@ function aligned_spikes = prepare_neuronal_data(session_data, ...
     selected_neurons, trial_indices, alignment_events, analysis_plan)
 
 %% Define Alignment Parameters
-bin_width = 0.2; % 200ms bin size
-step_size = 0.1; % 100ms step size
+bin_width = 0.05; % 50ms bin size
+step_size = 0.05; % 50ms step size
 
 % Get basic info
 neuron_cluster_ids = find(selected_neurons);
@@ -32,7 +32,7 @@ n_trials = numel(trial_indices);
 for i_event = 1:numel(alignment_events)
     event_name = alignment_events{i_event};
 
-    % Define time window based on the event type
+    % Define time window by looking up the event in the analysis plan
     time_window = analysis_plan.event_windows.(event_name);
 
     % --- New Overlapping Binning ---

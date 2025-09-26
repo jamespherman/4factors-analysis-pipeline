@@ -39,7 +39,8 @@ fourfactors_trial_indices = find(session_data.trialInfo.taskCode == ...
 %% Prepare Neuronal Data
 % Pass the alignment events to the neuronal data preparation function
 core_data.spikes = prepare_neuronal_data(session_data, ...
-    selected_neurons, fourfactors_trial_indices, alignment_events, analysis_plan);
+    selected_neurons, fourfactors_trial_indices, ...
+    alignment_events, analysis_plan);
 
 %% Prepare Pupil Data
 % This part is removed as per the refactoring plan.
