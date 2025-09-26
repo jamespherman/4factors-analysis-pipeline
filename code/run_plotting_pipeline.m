@@ -45,7 +45,7 @@ for i = 1:length(brain_areas)
     fprintf('Generating plots for %s...\n', brain_area_name);
 
     % Generate aggregated ROC comparison plot
-    plot_aggregated_roc_comparison(aggregated_data, brain_area_name);
+    % plot_aggregated_roc_comparison(aggregated_data, brain_area_name);
 
     % Generate aggregated ANOVA plot
     plot_aggregated_anova(aggregated_data, brain_area_name, analysis_plan);

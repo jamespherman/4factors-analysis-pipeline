@@ -69,7 +69,8 @@ for i_model = 1:length(anova_plan)
 
     for i_term = 1:length(all_terms)
         term = all_terms{i_term};
-        % Create the p-value field name, replacing ':' with '_' for struct compatibility
+        % Create the p-value field name, replacing ':' with '_' for struct 
+        % compatibility
         p_field = ['p_', matlab.lang.makeValidName(strrep(term, ':', '_'))];
         label = sprintf('%s (%s)', term, model_label);
         plot_layout = [plot_layout; {label, p_field, model_name}];
@@ -85,7 +86,8 @@ n_rows = size(plot_layout, 1);
 event_names = analysis_plan.events;
 n_cols = length(event_names);
 
-fig = figure('Position', [100, 100, 300 * n_cols, 150 * n_rows], 'Color', 'w');
+fig = figure('Position', [100, 100, 300 * n_cols, 150 * n_rows], ...
+    'Color', 'w');
 h_axes = gobjects(n_rows, n_cols);
 colors = richColors;
 colors = colors([6, 12], :);
@@ -107,12 +109,14 @@ for i_row = 1:n_rows
         hold on;
 
         if ~isfield(aggregated_data.anova_results, analysis_name) || ...
-           ~isfield(aggregated_data.anova_results.(analysis_name), event_name)
+           ~isfield(aggregated_data.anova_results.(analysis_name), ...
+           event_name)
             text(0.5, 0.5, 'N/A', 'HorizontalAlignment', 'center');
             axis off; continue;
         end
 
-        session_results = aggregated_data.anova_results.(analysis_name).(event_name);
+        session_results = aggregated_data.anova_results.( ...
+            analysis_name).(event_name);
         n_sessions = length(session_results);
         all_proportions = [];
         time_vector = [];
