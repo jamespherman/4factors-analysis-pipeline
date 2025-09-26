@@ -41,14 +41,23 @@ This document defines the specifications for all final, publication-quality figu
 ## 3. Aggregated ROC Comparison Plot
 
 * **Script:** `plot_aggregated_roc_comparison.m`
-* **Purpose:** To visualize the proportion of neurons that show a significant firing rate preference between two experimental conditions over time.
-* **Layout:** One figure is generated for each event in `analysis_plan.events`. Each figure contains a row of subplots.
-    * **Columns:** Each comparison defined in `analysis_plan.roc_plan`.
-* **Plot Type:** A bidirectional filled bar/stairs plot (`barStairsFill`). [cite_start]Positive Y-values represent a preference for condition 2; negative Y-values represent a preference for condition 1. [cite: 748-749]
-* **Data Requirements:** Requires a `roc_comparison` struct, nested as `.(event_name).(comp_name)`. The data must contain a `.sig` matrix (with `+1` for cond2 pref, `-1` for cond1 pref) and a `.time_vector`.
+* **Purpose:** To visualize the proportion of neurons that show a significant firing rate preference between two experimental conditions, across all relevant comparisons and time epochs in a single view.
+* **Layout:** A single, consolidated figure with a multi-panel grid.
+    * [cite_start]**Rows:** Each comparison defined in `analysis_plan.roc_plan` (e.g., 'reward', 'salience', 'identity', 'probability') [cite: 2350-2357].
+    * [cite_start]**Columns:** Each alignment event specified in `analysis_plan.events`[cite: 2337].
+* **Plot Type:** A bidirectional filled bar/stairs plot (`barStairsFill`).
+    * Positive Y-values represent the proportion of neurons with a significant preference for the second condition (`cond2` in the plan).
+    * Negative Y-values represent the proportion of neurons with a significant preference for the first condition (`cond1` in the plan).
+* **Data Requirements:** The function will use the `roc_comparison` field from the aggregated data file, structured as `.(event_name).(comp_name)`. [cite_start]This data must contain a `.sig` matrix (with `+1` for cond2 preference, `-1` for cond1 preference) and a `.time_vector` [cite: 2877-2883].
 * **Axes:**
     * **X-Axis:** Time (s) relative to the alignment event.
     * **Y-Axis:** Proportion of Neurons.
+* **Formatting Conventions:**
+    * **Titles:** No overarching `sgtitle` will be used.
+    * **Row & Column Labeling:** Each row will be labeled on the **left** with a concise version of the comparison name (e.g., "Reward"). The alignment event for each column will be indicated by the **x-axis label** on the bottom plot of that column.
+    * **Axis Labels & Ticks:** X-axis labels (e.g., 'Time from targetOn (s)') and their corresponding tick labels will only appear on the **bottom-most row of plots**. [cite_start]Y-axis labels ("Proportion of Neurons") and their tick labels will only appear on the **left-most column of plots** [cite: 133-136].
+    * **Limits:** All subplots within the same row should share the same Y-axis limits to facilitate comparison. All plots will have their Y-axis centered at 0.
+    * **Colors:** Two distinct, consistent colors from `richColors.m` should be used for the two conditions across the entire figure.
 
 ---
 ## 4. Aggregated Behavioral Plot
