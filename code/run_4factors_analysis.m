@@ -425,7 +425,7 @@ for i = 1:height(manifest)
         % that the data preparation is always aligned with the full scope
         % of events required by all defined analyses.
         core_data = prepare_core_data(session_data, selected_neurons, ...
-            alignment_events);
+            alignment_events, analysis_plan);
         session_data.analysis.core_data = core_data;
 
         data_updated = true; % Mark data as updated

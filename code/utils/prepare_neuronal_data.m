@@ -17,7 +17,7 @@
 % Date: 2025-09-08
 
 function aligned_spikes = prepare_neuronal_data(session_data, ...
-    selected_neurons, trial_indices, alignment_events)
+    selected_neurons, trial_indices, alignment_events, analysis_plan)
 
 %% Define Alignment Parameters
 bin_width = 0.2; % 200ms bin size
@@ -33,11 +33,7 @@ for i_event = 1:numel(alignment_events)
     event_name = alignment_events{i_event};
 
     % Define time window based on the event type
-    if strcmp(event_name, 'reward')
-        time_window = [-0.5, 5.0]; % Extended window for reward epoch
-    else
-        time_window = [-0.5, 1.5]; % Standard window for other events
-    end
+    time_window = analysis_plan.event_windows.(event_name);
 
     % --- New Overlapping Binning ---
     % Define bin start times for the sliding window
