@@ -197,10 +197,8 @@ for i_row = 1:n_rows
             continue;
         end
 
-        % Set Y-label only for the first column of plots
-        if i_col == 1
-            ylabel(ax, plot_layout{i_row, 1}, 'Interpreter', 'none');
-        else
+        % Remove Y-tick labels for all but the first column of plots
+        if i_col > 1
             set(ax, 'YTickLabel', []);
         end
 
@@ -218,6 +216,56 @@ for i_row = 1:n_rows
             xlabel(ax, '');
         end
     end
+end
+
+%% Add Overarching Y-Labels for Model Blocks
+% --- Add Overarching Y-Labels for Model Blocks ---
+
+% Find the row indices corresponding to each ANOVA model
+model_names = plot_layout(:, 3);
+image_rows = find(strcmp(model_names, 'anova_imagetrials'));
+bullseye_rows = find(strcmp(model_names, 'anova_bullseyetrials'));
+
+% --- Add Label for Image Trials Block ---
+if ~isempty(image_rows)
+    % Get handles for the top-left and bottom-left axes in this block
+    top_left_ax = h_axes(image_rows(1), 1);
+    bottom_left_ax = h_axes(image_rows(end), 1);
+
+    % Get their positions to calculate the bounding box
+    top_pos = get(top_left_ax, 'Position');
+    bottom_pos = get(bottom_left_ax, 'Position');
+
+    % Calculate position for the new invisible axes
+    label_ax_pos = bottom_pos;
+    label_ax_pos(4) = (top_pos(2) + top_pos(4)) - bottom_pos(2);
+
+    % Create the invisible axes and apply the ylabel
+    label_ax = axes('Position', label_ax_pos, 'Visible', 'off');
+    ylabel_str = sprintf('Image Trials - %s', brain_area_name);
+    ylabel(label_ax, ylabel_str, 'Visible', 'on', ...
+        'FontWeight', 'bold', 'FontSize', 12, 'Interpreter', 'none');
+end
+
+% --- Add Label for Bullseye Trials Block ---
+if ~isempty(bullseye_rows)
+    % Get handles for the top-left and bottom-left axes in this block
+    top_left_ax = h_axes(bullseye_rows(1), 1);
+    bottom_left_ax = h_axes(bullseye_rows(end), 1);
+
+    % Get their positions to calculate the bounding box
+    top_pos = get(top_left_ax, 'Position');
+    bottom_pos = get(bottom_left_ax, 'Position');
+
+    % Calculate position for the new invisible axes
+    label_ax_pos = bottom_pos;
+    label_ax_pos(4) = (top_pos(2) + top_pos(4)) - bottom_pos(2);
+
+    % Create the invisible axes and apply the ylabel
+    label_ax = axes('Position', label_ax_pos, 'Visible', 'off');
+    ylabel_str = sprintf('Bullseye Trials - %s', brain_area_name);
+    ylabel(label_ax, ylabel_str, 'Visible', 'on', ...
+        'FontWeight', 'bold', 'FontSize', 12, 'Interpreter', 'none');
 end
 
 %% Save Figure
