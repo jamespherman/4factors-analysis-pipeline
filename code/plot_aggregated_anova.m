@@ -86,7 +86,7 @@ n_rows = size(plot_layout, 1);
 event_names = analysis_plan.events;
 n_cols = length(event_names);
 
-fig = figure('Position', [1, 1, 110 * n_cols, 100 * n_rows], ...
+fig = figure('Position', [1, 1, 200 * n_cols, 85 * n_rows], ...
     'Color', 'w', 'MenuBar', 'None', 'ToolBar', 'None');
 h_axes = gobjects(n_rows, n_cols);
 colors = richColors;
@@ -197,8 +197,17 @@ for i_row = 1:n_rows
             continue;
         end
 
-        % Remove Y-tick labels for all but the first column of plots
-        if i_col > 1
+        % Set a clean Y-label for the first column of plots
+        if i_col == 1
+            % Get the full label which includes the model type in parentheses
+            full_label = plot_layout{i_row, 1};
+
+            % Extract just the ANOVA term, removing the model type
+            short_label = extractBefore(full_label, ' (');
+
+            % Apply the clean label, interpreting underscores correctly
+            ylabel(ax, strrep(short_label, '_', ' '), 'Interpreter', 'none');
+        else
             set(ax, 'YTickLabel', []);
         end
 
@@ -245,6 +254,7 @@ if ~isempty(image_rows)
     ylabel_str = sprintf('Image Trials - %s', brain_area_name);
     ylabel(label_ax, ylabel_str, 'Visible', 'on', ...
         'FontWeight', 'bold', 'FontSize', 12, 'Interpreter', 'none');
+    label_ax.YLabel.Position = [-0.35 0.5 0];
 end
 
 % --- Add Label for Bullseye Trials Block ---
@@ -266,6 +276,7 @@ if ~isempty(bullseye_rows)
     ylabel_str = sprintf('Bullseye Trials - %s', brain_area_name);
     ylabel(label_ax, ylabel_str, 'Visible', 'on', ...
         'FontWeight', 'bold', 'FontSize', 12, 'Interpreter', 'none');
+    label_ax.YLabel.Position = [-0.35 0.5 0];
 end
 
 %% Save Figure
