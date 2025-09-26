@@ -15,7 +15,8 @@
 % Author: Jules
 % Date: 2025-09-08
 
-function core_data = prepare_core_data(session_data, selected_neurons, alignment_events)
+function core_data = prepare_core_data(session_data, ...
+    selected_neurons, alignment_events, analysis_plan)
 
 %% Setup Paths
 % Add the 'utils' directory to the path so that helper functions can be
@@ -38,7 +39,7 @@ fourfactors_trial_indices = find(session_data.trialInfo.taskCode == ...
 %% Prepare Neuronal Data
 % Pass the alignment events to the neuronal data preparation function
 core_data.spikes = prepare_neuronal_data(session_data, ...
-    selected_neurons, fourfactors_trial_indices, alignment_events);
+    selected_neurons, fourfactors_trial_indices, alignment_events, analysis_plan);
 
 %% Prepare Pupil Data
 % This part is removed as per the refactoring plan.
