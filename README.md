@@ -28,27 +28,22 @@ The project is organized into the following directories:
 
 ## **4. Workflow Overview**
 
-The main entry point for the analysis is the `run_4factors_analysis.m` script located in the `/code/` directory. This script automates the entire pipeline, from data loading to analysis and saving results.
+The analysis pipeline is executed as a sequence of three main scripts. This multi-step design separates per-session processing from data aggregation and plotting, providing a clear and modular workflow.
 
-The workflow is as follows:
+The basic workflow is as follows:
 
-1.  **Configuration**: The script is driven by the `config/session_manifest.csv` file. This file lists all sessions to be processed and tracks the status of each analysis stage (`screening`, `dataprep`, `analysis`).
-2.  **Execution**: Run the `run_4factors_analysis.m` script from the MATLAB command line. The script will:
-    a.  Load the session manifest.
-    b.  Load an `analysis_plan` from `define_task_conditions.m`.
-    c.  Iterate through each session in the manifest.
-    d.  For each session, it performs the following steps, skipping any that are already marked as 'complete' in the manifest:
-        i.  **Load Data**: Loads the `_session_data.mat` file.
-        ii. **Neuron Screening**: Selects task-modulated neurons by calling `screen_sc_neurons.m` or `screen_da_neurons.m`.
-        iii. **Diagnostic PDF Generation**: Creates per-neuron summary plots using `generate_neuron_summary_pdf.m`.
-        iv. **Core Data Preparation**: Prepares the data for analysis by calling `prepare_core_data.m`.
-        v.  **Run Analyses**: Executes a series of analyses as defined in the `analysis_plan`, including:
-            *   `analyze_baseline_comparison.m`
-            *   `analyze_roc_comparison.m`
-            *   `analyze_anova.m`
-    e.  Saves the updated `session_data` structure and the modified manifest.
+1.  **`run_4factors_analysis.m`**: This is the first stage of the pipeline. It iterates through each session listed in `config/session_manifest.csv` and performs all the core analyses on a per-session basis. For each session, it:
+    *   Loads the raw `_session_data.mat` file.
+    *   Screens neurons to identify task-modulated units.
+    *   Prepares the data for analysis by creating a `core_data` structure.
+    *   Executes a series of analyses as defined in `define_task_conditions.m`, including ROC, ANOVA, and baseline comparisons.
+    *   Saves the results back into a processed `_session_data.mat` file in the `/output/` directory and updates the session manifest.
 
-You can use the `force_rerun` structure at the top of `run_4factors_analysis.m` to force specific stages of the pipeline to re-run, even if they are marked as complete.
+2.  **`aggregate_analysis_results.m`**: This script runs after all sessions have been processed by `run_4factors_analysis.m`. It loops through the processed `_session_data.mat` files and compiles the results from all sessions into a single, aggregated data file: `aggregated_analysis_data.mat`. This file is structured to be "plot-ready" for the final stage.
+
+3.  **`run_plotting_pipeline.m`**: This is the final step. It loads the `aggregated_analysis_data.mat` file and uses the aggregated data to generate all the summary figures for the project.
+
+This sequential process ensures that data is first processed on a granular, per-session level, then efficiently aggregated, and finally plotted.
 
 ## **5\. Data and Path Conventions**
 
@@ -63,9 +58,11 @@ All scripts in this project are designed to be run from the root of the Project 
 
 This section provides a brief overview of the key functions in the analysis pipeline. All functions are located in the `/code/` directory unless otherwise specified.
 
-### **Main Script**
+### **Main Pipeline Scripts**
 
-*   **`run_4factors_analysis.m`**: The main script that orchestrates the entire analysis pipeline.
+*   **`run_4factors_analysis.m`**: The first stage of the pipeline. It runs all analyses on a per-session basis.
+*   **`aggregate_analysis_results.m`**: The second stage. It aggregates the results from all individual sessions into a single data file.
+*   **`run_plotting_pipeline.m`**: The final stage. It generates all summary figures from the aggregated data.
 
 ### **Core Analysis Functions**
 
