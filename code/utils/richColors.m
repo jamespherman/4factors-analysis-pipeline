@@ -1,27 +1,41 @@
-function colors = richColors
+function colors = richColors(output_format)
+    % Define the color data
+    color_data = { ...
+        'Deep Purple',      [75 0 146]; ...
+        'Medium Purple',    [93 58 155]; ...
+        'Royal Blue',       [0 90 181]; ...
+        'Deep Sky Blue',    [0 108 209]; ...
+        'Vivid Blue',       [12 123 220]; ...
+        'Bright Blue',      [26 133 255]; ...
+        'Teal',             [64 176 166]; ...
+        'Lime Green',       [26 255 26]; ...
+        'Light Yellow',     [254 254 98]; ...
+        'Bright Yellow',    [255 194 10]; ...
+        'Light Orange',     [225 190 106]; ...
+        'Dark Orange',      [153 79 0]; ...
+        'Bright Red',       [220 50 32]; ...
+        'Coral',            [230 97 90]; ...
+        'Deep Pink',        [212 17 89]; ...
+        'Medium Pink',      [211 95 183] ...
+    };
 
-% define "main" colors
-rgbValues = [...
-     255 194 10;  % Bright Yellow
-     12 123 220;  % Vivid Blue
-     153 79 0;    % Dark Orange
-     0 108 209;   % Deep Sky Blue
-     26 255 26;   % Lime Green
-     75 0 146;    % Deep Purple
-     254 254 98;  % Light Yellow
-     211 95 183;  % Medium Pink
-     225 190 106; % Light Orange
-     64 176 166;  % Teal
-     0 90 181;    % Royal Blue
-     220 50 32;   % Bright Red
-     230 97 90;   % Coral
-     93 58 155;   % Medium Purple
-     26 133 255;  % Bright Blue
-     212 17 89;   % Deep Pink
-    ];
+    % Default to 'matrix' if no format is specified
+    if nargin < 1
+        output_format = 'matrix';
+    end
 
-% define "my" order
-myOrder = [6; 14; 11; 4; 2; 15; 10; 5; 7; 9; 3; 1; 13; 12; 16; 8];
-
-% reorder and return
-colors = rgbValues(myOrder, :) / 255;
+    % Return the requested format
+    switch output_format
+        case 'table'
+            color_table = cell2table(color_data, ...
+                'VariableNames', {'Name', 'RGB'});
+            % Normalize RGB values
+            color_table.RGB = color_table.RGB / 255;
+            colors = color_table;
+        case 'matrix'
+            % Return just the RGB values, normalized
+            colors = cell2mat(color_data(:,2)) / 255;
+        otherwise
+            error("Invalid output_format. Use 'matrix' or 'table'.");
+    end
+end
