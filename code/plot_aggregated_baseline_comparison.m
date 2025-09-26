@@ -50,13 +50,15 @@ n_events = length(event_names);
 all_condition_names = {};
 for i_event = 1:n_events
     event_name = event_names{i_event};
-    all_condition_names = [all_condition_names; fieldnames(aggregated_data.baseline_comparison.(event_name))];
+    all_condition_names = [all_condition_names; fieldnames(...
+        aggregated_data.baseline_comparison.(event_name))];
 end
 condition_names = unique(all_condition_names, 'stable');
 n_conditions = length(condition_names);
 
 if n_conditions == 0 || n_events == 0
-    warning('plot_aggregated_baseline_comparison:no_conditions_or_events', 'No conditions or events to plot.');
+    warning(['plot_aggregated_baseline_comparison:no_conditions_' ...
+        'or_events'], 'No conditions or events to plot.');
     return;
 end
 
@@ -67,7 +69,8 @@ for i_cond = 1:n_conditions
     max_val_for_row = 0;
     for i_event = 1:n_events
         event_name = event_names{i_event};
-        if isfield(aggregated_data.baseline_comparison.(event_name), cond_name)
+        if isfield(aggregated_data.baseline_comparison.(event_name), ...
+                cond_name)
             session_data = aggregated_data.baseline_comparison.(event_name).(cond_name);
             if ~isempty(session_data)
                 all_sig_matrices = arrayfun(@(s) s.sig, session_data, 'UniformOutput', false);
@@ -88,16 +91,15 @@ for i_cond = 1:n_conditions
 end
 
 %% Figure and Plotting Setup
-fig_width = 250 * n_events;
-fig_height = 200 * n_conditions;
-fig = figure('Position', [100, 100, fig_width, fig_height], 'Color', 'w');
+fig_width = 170 * n_events;
+fig_height = 110 * n_conditions;
+fig = figure('Position', [1, 1, fig_width, fig_height], 'Color', 'w', ...
+    'MenuBar', 'None', 'ToolBar', 'None');
 
 h_axes = gobjects(n_conditions, n_events);
 
 colors = richColors();
-plot_color = colors(1,:);
-pos_alpha = 0.6; % Face alpha for increase
-neg_alpha = 0.3; % Face alpha for decrease
+plot_colors = colors([7, 14],:);
 
 %% Main Plotting Loop (Rows = Conditions, Columns = Events)
 for i_cond = 1:n_conditions
@@ -109,7 +111,9 @@ for i_cond = 1:n_conditions
 
         % Calculate subplot index (row-major order)
         plot_idx = (i_cond - 1) * n_events + i_event;
-        h_axes(i_cond, i_event) = mySubPlot([n_conditions, n_events, plot_idx]);
+        h_axes(i_cond, i_event) = mySubPlot(...
+            [n_conditions, n_events, plot_idx], 'Height', 0.9, ...
+            'Width', 0.9);
         hold on;
 
         % Check if this condition exists for this event
@@ -143,11 +147,11 @@ for i_cond = 1:n_conditions
 
         % --- Plotting ---
         h_inc = barStairsFill(time_vector, zeros(size(prop_increase)), prop_increase);
-        set(h_inc(1), 'FaceColor', plot_color, 'EdgeColor', 'none', 'FaceAlpha', pos_alpha);
+        set(h_inc(1), 'FaceColor', plot_colors(1,:), 'EdgeColor', 'none');
         delete(h_inc(2:3));
 
         h_dec = barStairsFill(time_vector, zeros(size(prop_decrease)), prop_decrease);
-        set(h_dec(1), 'FaceColor', plot_color, 'EdgeColor', 'none', 'FaceAlpha', neg_alpha);
+        set(h_dec(1), 'FaceColor', plot_colors(2,:), 'EdgeColor', 'none');
         delete(h_dec(2:3));
 
         % --- Formatting ---
@@ -166,7 +170,8 @@ for i_cond = 1:n_conditions
         ax = h_axes(i_cond, i_event);
         if ~isgraphics(ax, 'axes'), continue; end % Skip if 'No Data' plot
 
-        set(ax, 'TickDir', 'out', 'Color', 'none', 'XColor', 'k', 'YColor', 'k', 'LineWidth', 1);
+        set(ax, 'TickDir', 'out', 'Color', 'none', 'XColor', 'k', ...
+            'YColor', 'k', 'LineWidth', 1);
 
         % Row Labeling (Left-most column)
         if i_event == 1
@@ -179,7 +184,8 @@ for i_cond = 1:n_conditions
 
         % Column Labeling (Bottom-most row)
         if i_cond == n_conditions
-             xlabel_str = sprintf('Time from %s (s)', strrep(event_names{i_event}, '_', ' '));
+             xlabel_str = sprintf('Time from %s (s)', ...
+                 strrep(event_names{i_event}, '_', ' '));
              xlabel(ax, xlabel_str);
         else
             set(ax, 'XTickLabel', []);
@@ -191,11 +197,9 @@ end
 % Create a single, overarching Y-label for the entire figure
 han = axes(fig, 'visible', 'off');
 han.YLabel.Visible = 'on';
-ylabel(han, 'Proportion of Neurons', 'FontWeight', 'bold');
-
-% Add a main title
-sgtitle(sprintf('Baseline Comparison for %s', strrep(brain_area_name, '_', ' ')), ...
-    'Interpreter', 'none', 'FontWeight', 'bold');
+ylabel(han, sprintf('Proportion of %s Neurons', brain_area_name), ...
+    'FontWeight', 'bold');
+han.YLabel.Position = [-0.135 0.5 0];
 
 %% Save Figure
 fig_filename = fullfile(figures_dir, ...

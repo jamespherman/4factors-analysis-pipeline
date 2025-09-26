@@ -1,34 +1,32 @@
 %% plot_aggregated_anova.m
 %
-%   Generates a summary figure visualizing time-resolved ANOVA results,
-%   adhering to the specifications in `docs/plotting_requirements.md`.
+%   Generates a summary figure visualizing time-resolved ANOVA results.
 %
-%   It plots the proportion of significant neurons (p < 0.05) for each
-%   session individually, with the cross-session average trace overlaid.
-%   The figure is structured with each ANOVA effect term as a row and
-%   each alignment event as a column.
+%   This function plots the proportion of neurons with a significant effect
+%   (p < 0.05) for each term in the ANOVA models. The figure is a grid
+%   with ANOVA terms as rows and alignment events as columns. Each subplot
+%   shows the mean proportion across all sessions (bold trace) overlaid on
+%   the traces from individual sessions (faint traces).
 %
 % INPUTS:
 %
-%   aggregated_data - A struct containing aggregated data for one brain area.
-%                     This script requires the `anova_results` field, structured as:
-%                     .(analysis_name).(event_name) = [1 x nSessions] struct array
+%   aggregated_data - Struct with aggregated data for one brain area,
+%                     containing the `anova_results` field.
 %
-%                     Each struct in the array must contain fields for the p-value
-%                     of each model term (e.g., .p_reward) and a .time_vector.
+%   brain_area_name - String with the name of the brain area (e.g., 'SC').
 %
-%   brain_area_name - A string with the name of the brain area (e.g., 'SC').
-%   analysis_plan   - The analysis plan struct, typically loaded from the same
-%                     .mat file as aggregated_data. This is the source of truth
-%                     for event names and model terms.
+%   analysis_plan   - The analysis plan struct, which is the source of
+%                     truth for event names and model terms.
 %
 % Author: Jules
-% Date: 2025-09-24
+% Date: 2025-09-26 (Refactored for style and capitalization fix)
 %
-function plot_aggregated_anova(aggregated_data, brain_area_name, analysis_plan)
+function plot_aggregated_anova(aggregated_data, brain_area_name, ...
+    analysis_plan)
 
 %% Setup
-project_root = fullfile(findOneDrive, 'Code', '4factors-analysis-pipeline');
+project_root = fullfile(findOneDrive, 'Code', ...
+    '4factors-analysis-pipeline');
 figures_dir = fullfile(project_root, 'figures');
 addpath(fullfile(project_root, 'code', 'utils'));
 
@@ -40,13 +38,10 @@ end
 %% Dynamically Determine Plot Layout from Analysis Plan
 anova_plan = analysis_plan.anova_plan;
 plot_layout = {};
-
 for i_model = 1:length(anova_plan)
     model_name = anova_plan(i_model).name;
     
-    % --- Start of Corrected Logic ---
-    
-    % 1. Derive a label from the model name
+    % Derive a label from the model name (e.g., 'Image' or 'Bullseye')
     if contains(model_name, 'image')
         model_label = 'Image';
     elseif contains(model_name, 'bullseye')
@@ -55,28 +50,33 @@ for i_model = 1:length(anova_plan)
         model_label = 'Model';
     end
 
-    % 2. Dynamically generate all possible ANOVA terms from the .factors field
+    % Dynamically generate all possible ANOVA terms up to pairwise
+    % interactions from the plan's factors
     factors = anova_plan(i_model).factors;
     all_terms = {};
-    for k = 1:length(factors)
+    for k = 1:2
         combs = nchoosek(factors, k);
         for i = 1:size(combs, 1)
             all_terms{end+1} = strjoin(combs(i,:), ':');
         end
     end
-    
-    % --- End of Corrected Logic ---
 
     for i_term = 1:length(all_terms)
         term = all_terms{i_term};
-        % Create the p-value field name, replacing ':' with '_' for struct 
-        % compatibility
-        p_field = ['p_', matlab.lang.makeValidName(strrep(term, ':', '_'))];
+        
+        % Capitalize term parts to match the field names in the data struct
+        term_parts = strsplit(term, ':');
+        capitalized_parts = cellfun(@(c) [upper(c(1)), c(2:end)], ...
+            term_parts, 'UniformOutput', false);
+        capitalized_term_for_field = strjoin(capitalized_parts, '_');
+        p_field = ['p_', matlab.lang.makeValidName(...
+            capitalized_term_for_field)];
+        
         label = sprintf('%s (%s)', term, model_label);
         plot_layout = [plot_layout; {label, p_field, model_name}];
     end
     
-    % Add a separator between models if there are multiple
+    % Add a separator row between models if there are multiple
     if i_model < length(anova_plan)
         plot_layout = [plot_layout; {'---', '', ''}];
     end
@@ -86,8 +86,8 @@ n_rows = size(plot_layout, 1);
 event_names = analysis_plan.events;
 n_cols = length(event_names);
 
-fig = figure('Position', [100, 100, 300 * n_cols, 150 * n_rows], ...
-    'Color', 'w');
+fig = figure('Position', [1, 1, 110 * n_cols, 100 * n_rows], ...
+    'Color', 'w', 'MenuBar', 'None', 'ToolBar', 'None');
 h_axes = gobjects(n_rows, n_cols);
 colors = richColors;
 colors = colors([6, 12], :);
@@ -98,16 +98,21 @@ for i_row = 1:n_rows
     p_field = plot_layout{i_row, 2};
     analysis_name = plot_layout{i_row, 3};
 
+    % Skip separator rows in the layout
     if strcmp(label_name, '---')
-        continue; % Skip separator row
+        continue;
     end
 
     for i_col = 1:n_cols
         event_name = event_names{i_col};
-        ax = mySubPlot([n_rows, n_cols, (i_row - 1) * n_cols + i_col]);
+        
+        ax_idx = (i_row - 1) * n_cols + i_col;
+        ax = mySubPlot([n_rows, n_cols, ax_idx], 'Width', 0.875, ...
+            'Height', 0.9, 'LeftMargin', 0.1);
         h_axes(i_row, i_col) = ax;
         hold on;
-
+        
+        % Check if the required data exists
         if ~isfield(aggregated_data.anova_results, analysis_name) || ...
            ~isfield(aggregated_data.anova_results.(analysis_name), ...
            event_name)
@@ -115,19 +120,19 @@ for i_row = 1:n_rows
             axis off; continue;
         end
 
-        session_results = aggregated_data.anova_results.( ...
-            analysis_name).(event_name);
+        session_results = ...
+            aggregated_data.anova_results.(analysis_name).(event_name);
         n_sessions = length(session_results);
         all_proportions = [];
         time_vector = [];
 
-        % Aggregate proportions from all sessions
+        % Aggregate proportions from all sessions for this subplot
         for i_session = 1:n_sessions
-            if isfield(session_results(i_session), p_field)
+            if isfield(session_results(i_session), p_field) && ...
+                    ~isempty(session_results(i_session).(p_field))
 
                 p_values = session_results(i_session).(p_field);
-                if isempty(p_values), continue; end
-
+                
                 if isempty(time_vector)
                     time_vector = session_results(i_session).time_vector;
                 end
@@ -142,50 +147,57 @@ for i_row = 1:n_rows
             axis off; continue;
         end
 
-        % Plot individual session traces
+        % Plot individual session traces with transparency
         for i_session = 1:size(all_proportions, 1)
-            plot(ax, time_vector, all_proportions(i_session, :), 'Color', [colors(1,:), 0.2]);
+            plot(ax, time_vector, all_proportions(i_session, :), ...
+                'Color', [colors(1,:), 0.2]);
         end
         
-        % Plot average trace
+        % Plot the mean trace across sessions
         mean_trace = mean(all_proportions, 1, 'omitnan');
-        plot(ax, time_vector, mean_trace, 'Color', colors(1,:), 'LineWidth', 2);
+        plot(ax, time_vector, mean_trace, 'Color', colors(1,:), ...
+            'LineWidth', 2);
 
         xlim(ax, [time_vector(1), time_vector(end)]);
-        ylim(ax, [0, max(1, max(mean_trace) * 1.2)]); % Ensure Y-axis starts at 0
         box off;
     end
 end
 
 %% Final Figure Formatting
-% Find a good y-limit across all related plots
-y_max = 0;
-for i_ax = 1:numel(h_axes)
-    if isgraphics(h_axes(i_ax))
-        current_ylim = get(h_axes(i_ax), 'YLim');
-        if current_ylim(2) > y_max
-            y_max = current_ylim(2);
-        end
+% Use outerLims to set common Y-limits for each row of plots
+for i_row = 1:n_rows
+    % Skip separator rows
+    if strcmp(plot_layout{i_row, 1}, '---')
+        continue;
     end
+    
+    % Get all valid axes handles for the current row
+    row_axes = h_axes(i_row, isgraphics(h_axes(i_row, :)));
+    if isempty(row_axes)
+        continue;
+    end
+    
+    % Get the outer limits for this row and set a common y-axis
+    [~, yLims] = outerLims(row_axes);
+    set(row_axes, 'YLim', [0, max(0.1, yLims(2) * 1.1)]);
 end
-if y_max == 0, y_max = 1; end % Default if no data
 
+% Link x-axes for all valid plots
 valid_axes_mask = ~strcmp(plot_layout(:,1),'---');
 linkaxes(h_axes(valid_axes_mask, :), 'x');
-set(h_axes(isgraphics(h_axes)), 'YLim', [0, y_max]);
 
+% De-clutter axes by removing redundant labels
 for i_row = 1:n_rows
-    if strcmp(plot_layout{i_row, 1}, '---'), continue; end
+    if strcmp(plot_layout{i_row, 1}, '---')
+        continue;
+    end
     for i_col = 1:n_cols
         ax = h_axes(i_row, i_col);
-        if ~isgraphics(ax), continue; end
-
-        % Set title only for the top row of plots
-        if i_row == 1
-            title(ax, strrep(event_names{i_col}, '_', ' '));
+        if ~isgraphics(ax)
+            continue;
         end
 
-        % Set Y-label only for the first column
+        % Set Y-label only for the first column of plots
         if i_col == 1
             ylabel(ax, plot_layout{i_row, 1}, 'Interpreter', 'none');
         else
@@ -193,19 +205,25 @@ for i_row = 1:n_rows
         end
 
         % Set X-label only for the bottom-most plots in the grid
-        is_last_visible_row = (i_row == n_rows) || strcmp(plot_layout{i_row+1, 1}, '---');
+        is_last_row = (i_row == n_rows);
+        is_last_visible_row = is_last_row || ...
+            strcmp(plot_layout{i_row + 1, 1}, '---');
+        % Column Labeling (Bottom-most row)
         if is_last_visible_row
-            xlabel(ax, 'Time (s)');
+             xlabel_str = sprintf('Time from %s (s)', ...
+                 strrep(event_names{i_col}, '_', ' '));
+             xlabel(ax, xlabel_str);
         else
             set(ax, 'XTickLabel', []);
+            xlabel(ax, '');
         end
     end
 end
 
-sgtitle(sprintf('Proportion of Significant Neurons (p < 0.05) for %s', brain_area_name), 'FontWeight', 'bold', 'Interpreter', 'none');
-
 %% Save Figure
-if ~exist(figures_dir, 'dir'), mkdir(figures_dir); end
+if ~exist(figures_dir, 'dir')
+    mkdir(figures_dir);
+end
 fig_filename = fullfile(figures_dir, ...
     sprintf('aggregated_anova_%s.pdf', brain_area_name));
 pdfSave(fig_filename, fig.Position(3:4)/72, fig);
