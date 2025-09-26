@@ -262,3 +262,16 @@ All angular measurements adhere to the standard mathematical convention for pola
     * **Left Visual Field:** `(theta > 90 AND theta < 270)`
 ---
 
+## Color Usage
+
+The `richColors.m` function provides a curated list of 16 distinct colors suitable for plotting.
+
+### Obtaining Colors
+To get the list of colors, call the function with the desired output format:
+- `richColors('matrix')`: Returns an Nx3 matrix of normalized RGB values. This is the default.
+- `richColors('table')`: Returns a table with color names and normalized RGB values.
+
+### Selecting for Contrast vs. Similarity
+The colors are ordered to provide high contrast between non-adjacent colors.
+- **For high contrast**: Select colors that are far apart in the list. For example, using the first and last colors in the palette will provide strong visual distinction.
+- **For similarity**: Select colors that are adjacent in the list or share similar names (e.g., "Deep Purple" and "Medium Purple"). You can also inspect the RGB values in the table output to find colors with numerically similar values. For example, `[75 0 146]` (Deep Purple) and `[93 58 155]` (Medium Purple) are closer to each other than to `[255 194 10]` (Bright Yellow). Use the text descriptions and RGB values to guide your selection based on the visual relationship you want to convey.
