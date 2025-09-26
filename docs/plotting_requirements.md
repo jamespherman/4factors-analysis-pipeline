@@ -17,19 +17,25 @@ This document defines the specifications for all final, publication-quality figu
 * **Axes:**
     * **X-Axis:** Time (s) relative to the alignment event.
     * **Y-Axis:** Proportion of Significant Neurons.
-
 ---
 ## 2. Aggregated Baseline Comparison Plot
 
 * **Script:** `plot_aggregated_baseline_comparison.m`
-* **Purpose:** To visualize the proportion of neurons whose firing rate significantly increases or decreases relative to a pre-event baseline period.
-* **Layout:** One figure is generated for each event in `analysis_plan.events`. Each figure contains a row of subplots.
-    * **Columns:** Each condition defined in `analysis_plan.baseline_plan`.
-* **Plot Type:** A bidirectional filled bar/stairs plot (`barStairsFill`). [cite_start]Positive Y-values represent an increase in firing rate; negative Y-values represent a decrease. [cite: 627-629]
-* **Data Requirements:** Requires a `baseline_comparison` struct, nested as `.(event_name).(condition_name)`. The data must contain a `.sig` matrix (with `+1` for increase, `-1` for decrease) and a `.time_vector`.
+* **Purpose:** To visualize the proportion of neurons whose firing rate significantly increases or decreases relative to a pre-event baseline period, across all relevant conditions and time epochs in a single view.
+* **Layout:** A single, consolidated figure with a multi-panel grid.
+    * **Rows:** Each condition defined in `analysis_plan.baseline_plan`. [cite_start]The specific conditions are determined dynamically from the plan but will correspond to factors like reward, salience, identity, and probability [cite: 2345-2348].
+    * **Columns:** Each alignment event specified in `analysis_plan.events` (e.g., `fixOn`, `targetOn`, etc.).
+* **Plot Type:** A bidirectional filled bar/stairs plot (`barStairsFill`) will be used for each subplot.
+    * Positive Y-values will represent the proportion of neurons with a significant **increase** in firing rate from baseline.
+    * Negative Y-values will represent the proportion of neurons with a significant **decrease** in firing rate from baseline.
+* **Data Requirements:** The function will use the `baseline_comparison` field from the aggregated data file, which is structured as `.(event_name).(condition_name)`. This data must contain a `.sig` matrix (with `+1` for increase, `-1` for decrease) and a `.time_vector`.
 * **Axes:**
     * **X-Axis:** Time (s) relative to the alignment event.
     * **Y-Axis:** Proportion of Neurons.
+* **Formatting Conventions:**
+    * **Row & Column Labeling:** Each row will be labeled on the **left** with a concise version of the condition name (e.g., "High Reward"). The alignment event for each column will be indicated by the **x-axis label** on the bottom plot of that column.
+    * **Axis Labels & Ticks:** X-axis labels (e.g., 'Time from targetOn (s)') and their corresponding tick labels will only appear on the **bottom-most row of plots**. [cite_start]Y-axis labels ("Proportion of Neurons") and their tick labels will only appear on the **left-most column of plots** [cite: 133-136].
+    * **Limits:** All subplots within the same row should share the same Y-axis limits to allow for direct visual comparison of effect sizes across different time epochs. All plots will have their Y-axis centered at 0.
 
 ---
 ## 3. Aggregated ROC Comparison Plot

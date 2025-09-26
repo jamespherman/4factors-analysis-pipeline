@@ -54,7 +54,12 @@ for i = 1:length(brain_areas)
     plot_aggregated_baseline_comparison(aggregated_data, brain_area_name);
 
     % Generate aggregated behavior plot
-    plot_aggregated_behavior(aggregated_data, brain_area_name, analysis_plan);
+    plot_aggregated_behavior(aggregated_data, brain_area_name, ...
+        analysis_plan);
+
+    % In run_plotting_pipeline.m, inside the main for loop:
+    plot_aggregated_decoding(aggregated_data, brain_area_name, ...
+        analysis_plan, session_ids.(lower(brain_area_name)));
 end
 
 % End timer and provide user feedback

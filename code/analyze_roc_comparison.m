@@ -76,25 +76,35 @@ function analysis_results = analyze_roc_comparison(core_data, ...
         return;
     end
 
+    % initialize sig vals to NaN
     sig_vals = NaN(n_neurons, n_bins);
 
+    % loop over neurons
     for i_neuron = 1:n_neurons
         neuron_data = squeeze(event_data.rates(i_neuron, :, :));
         cond1_data = neuron_data(cond1_mask, :);
         cond2_data = neuron_data(cond2_mask, :);
 
-        for i_bin = 1:n_bins
-            data1 = cond1_data(:, i_bin);
-            data2 = cond2_data(:, i_bin);
+        % 1. Count the number of valid trials for each condition.
+        % A valid trial is a row that is not entirely composed of NaNs.
+        n_valid_trials_1 = sum(~all(isnan(cond1_data), 2));
+        n_valid_trials_2 = sum(~all(isnan(cond2_data), 2));
 
-            if sum(~isnan(data1)) > 1 && sum(~isnan(data2)) > 1
-                try
-                    [~, ~, ~, sig] = arrayROC(data1, data2);
-                    sig_vals(i_neuron, i_bin) = sig;
-                catch ME
-                    % In case of error in arrayROC, leave as NaN
-                end
-            end
+        % 2. Check if both conditions have more than 5 valid trials. If
+        % they do, run the ROC analysis. If not, leave that row of 'sig' as
+        % NaN:
+        if n_valid_trials_1 > 5 && n_valid_trials_2 > 5
+            [~, ~, ~, sig_vals(i_neuron, :)] = ...
+                arrayROC(...
+                cond1_data, ...
+                cond2_data, 200);
+        else
+            % If not enough trials, we silently continue, leaving this 
+            % neuron's results as NaN. A warning can be useful for 
+            % debugging.
+            warning(['Skipping neuron %d: insufficient valid trials ' ...
+                '                for this comparison.'], i_neuron);
+            continue; % Move to the next neuron
         end
     end
 

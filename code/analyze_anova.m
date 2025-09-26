@@ -45,12 +45,14 @@ function session_data = analyze_anova(session_data, core_data, ...
     if ~isfield(session_data.analysis, 'anova_results')
         session_data.analysis.anova_results = struct();
     end
-    session_data.analysis.anova_results.(analysis_name).(event_name) = struct();
+    session_data.analysis.anova_results.(analysis_name).(event_name) = ...
+        struct();
 
     %% Prepare Data for ANOVA
     if ~isfield(core_data.spikes, event_name)
         warning('analyze_anova:eventNotFound', ...
-            'Event ''%s'' not found in core_data.spikes. Skipping.', event_name);
+            'Event ''%s'' not found in core_data.spikes. Skipping.', ...
+            event_name);
         return;
     end
     event_data = core_data.spikes.(event_name);
@@ -64,17 +66,20 @@ function session_data = analyze_anova(session_data, core_data, ...
     end
 
     if ~iscell(trial_mask_spec)
-        error('analyze_anova:invalidTrialMask', 'trial_mask must be a string or a cell array of strings.');
+        error('analyze_anova:invalidTrialMask', ['trial_mask must ' ...
+            'be a string or a cell array of strings.']);
     end
 
     if isempty(trial_mask_spec)
-        warning('analyze_anova:emptyTrialMask', 'Trial mask spec is empty. Skipping.');
+        warning('analyze_anova:emptyTrialMask', ['Trial mask spec is ' ...
+            '            empty. Skipping.']);
         return;
     end
 
     first_mask_name = trial_mask_spec{1};
     if ~isfield(conditions, first_mask_name)
-        warning('analyze_anova:maskNotFound', 'Trial mask ''%s'' not found. Skipping.', ...
+        warning('analyze_anova:maskNotFound', ['Trial mask ''%s'' ' ...
+            '            not found. Skipping.'], ...
             first_mask_name);
         return;
     end
@@ -83,7 +88,8 @@ function session_data = analyze_anova(session_data, core_data, ...
     for i = 2:length(trial_mask_spec)
         mask_name = trial_mask_spec{i};
         if ~isfield(conditions, mask_name)
-            warning('analyze_anova:maskNotFound', 'Trial mask ''%s'' not found. Skipping.', ...
+            warning('analyze_anova:maskNotFound', ['Trial mask ''%s'' ' ...
+                '            not found. Skipping.'], ...
                 mask_name);
             return;
         end
@@ -118,7 +124,8 @@ function session_data = analyze_anova(session_data, core_data, ...
     % Ensures only trials with complete data across all factors are used.
     valid_trials_mask = true(sum(trial_mask), 1);
     for i = 1:num_factors
-        valid_trials_mask = valid_trials_mask & ~cellfun('isempty', group_vars{i});
+        valid_trials_mask = valid_trials_mask & ~cellfun('isempty', ...
+            group_vars{i});
     end
 
     % Filter firing rates and group variables by the valid trials mask
@@ -128,7 +135,8 @@ function session_data = analyze_anova(session_data, core_data, ...
     end
 
     if size(fr_filt, 2) < num_factors * 2
-        warning('analyze_anova:notEnoughData', 'Not enough valid trials. Skipping.');
+        warning('analyze_anova:notEnoughData', ['Not enough valid ' ...
+            'trials. Skipping.']);
         return;
     end
 
@@ -139,8 +147,9 @@ function session_data = analyze_anova(session_data, core_data, ...
 
     % Run once to get term names
     y_template = squeeze(fr_filt(1, :, 1))';
-    [~, tbl, ~] = anovan(y_template, group_vars, 'model', 'interaction', ...
-        'varnames', factor_names_capitalized, 'display', 'off');
+    [~, tbl, ~] = anovan(y_template, group_vars, 'model', ...
+        'interaction', 'varnames', factor_names_capitalized, ...
+        'display', 'off');
 
     if ~isempty(tbl)
         term_names = tbl(2:(end-2), 1);
@@ -150,13 +159,18 @@ function session_data = analyze_anova(session_data, core_data, ...
             f_val_fields{i_term} = ['f_', base_name];
 
             % Initialize result matrices with NaNs
-            session_data.analysis.anova_results.(analysis_name).(event_name).(p_val_fields{i_term}) = NaN(n_neurons, n_bins);
-            session_data.analysis.anova_results.(analysis_name).(event_name).(f_val_fields{i_term}) = NaN(n_neurons, n_bins);
+            session_data.analysis.anova_results.(analysis_name).(...
+                event_name).(p_val_fields{i_term}) = NaN(n_neurons, ...
+                n_bins);
+            session_data.analysis.anova_results.(analysis_name).(...
+                event_name).(f_val_fields{i_term}) = NaN(n_neurons, ...
+                n_bins);
         end
     end
 
     if isempty(term_names)
-        warning('analyze_anova:noTerms', 'Could not determine ANOVA terms. Skipping.');
+        warning('analyze_anova:noTerms', ['Could not determine ANOVA ' ...
+            '            terms. Skipping.']);
         return;
     end
 
@@ -165,24 +179,31 @@ function session_data = analyze_anova(session_data, core_data, ...
         for i_neuron = 1:n_neurons
             y = squeeze(fr_filt(i_neuron, :, i_bin))';
 
-            if sum(~isnan(y)) < length(y) * 0.5 || isempty(y) || all(y == y(1))
+            if sum(~isnan(y)) < length(y) * 0.5 || isempty(y) || ...
+                    all(y == y(1))
                 continue; % Skip if data is insufficient or constant
             end
 
-            [p, tbl, ~, ~] = anovan(y, group_vars, 'model', 'interaction', ...
-                'varnames', factor_names_capitalized, 'display', 'off');
+            [p, tbl, ~, ~] = anovan(y, group_vars, 'model', ...
+                'interaction', 'varnames', factor_names_capitalized, ...
+                'display', 'off');
 
             % Store p-values and F-statistics
             for i_term = 1:length(term_names)
                 p_val = p(i_term);
                 f_val = tbl{i_term + 1, 6}; % F-statistic is in column 6
 
-                session_data.analysis.anova_results.(analysis_name).(event_name).(p_val_fields{i_term})(i_neuron, i_bin) = p_val;
-                session_data.analysis.anova_results.(analysis_name).(event_name).(f_val_fields{i_term})(i_neuron, i_bin) = f_val;
+                session_data.analysis.anova_results.(analysis_name).(...
+                    event_name).(p_val_fields{i_term})(i_neuron, i_bin)...
+                    = p_val;
+                session_data.analysis.anova_results.(analysis_name).(...
+                    event_name).(f_val_fields{i_term})(i_neuron, i_bin)...
+                    = f_val;
             end
         end
     end
 
     % Store the time vector for plotting
-    session_data.analysis.anova_results.(analysis_name).(event_name).time_vector = time_vector;
+    session_data.analysis.anova_results.(analysis_name).(...
+        event_name).time_vector = time_vector;
 end

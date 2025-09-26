@@ -110,7 +110,7 @@ for i_event = 1:numel(alignment_events)
     % Select data based on the trial mask
     % The data array dimensions are (neurons, trials, time_bins)
     sub_data = event_data.rates(:, trial_mask, :);
-    [n_neurons, n_sel_trials] = size(sub_data, 1);
+    [n_neurons, n_sel_trials] = size(sub_data);
 
     % Initialize results arrays
     n_comp_bins = sum(comp_idx);
