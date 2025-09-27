@@ -66,7 +66,8 @@ for i_test = 1:n_tests
 
     % --- Find Standard and Generalization Data using the analysis_plan ---
     if ~isfield(aggregated_data.population_decoding, test_name)
-        title(h_axes(i_test), {strrep(test_name, '_', ' '), '(Missing Gen. data)'});
+        title(h_axes(i_test), {strrep(test_name, '_', ' '), ...
+            '(Missing Gen. data)'});
         continue;
     end
     gen_data = aggregated_data.population_decoding.(test_name);
@@ -77,22 +78,26 @@ for i_test = 1:n_tests
     
     if ~isfield(aggregated_data.population_decoding, standard_test_name)
         warning('plot_aggregated_decoding:missing_cv', ...
-            'Could not find standard CV test "%s" for generalization test "%s". Skipping.', ...
+            ['Could not find standard CV test "%s" for ...' ...
+            'generalization test "%s". Skipping.'], ...
             standard_test_name, test_name);
-        title(h_axes(i_test), {strrep(test_name, '_', ' '), '(Missing CV data)'});
+        title(h_axes(i_test), {strrep(test_name, '_', ' '), ...
+            '(Missing CV data)'});
         continue;
     end
     standard_data = aggregated_data.population_decoding.(standard_test_name);
 
     % Create maps for quick lookup of session data
-    standard_map = containers.Map({standard_data.session_id}, 1:length(standard_data));
+    standard_map = containers.Map({standard_data.session_id}, ...
+        1:length(standard_data));
 
     % --- Plot Data for Each Session ---
     for i_session = 1:length(gen_data)
         session_id = gen_data(i_session).session_id;
 
         if ~isKey(standard_map, session_id) || isempty(session_id)
-            continue; % Skip if session_id is empty or no standard counterpart
+            % Skip if session_id is empty or no standard counterpart
+            continue; 
         end
 
         std_idx = standard_map(session_id);
@@ -109,40 +114,52 @@ for i_test = 1:n_tests
 
         errorbar(x_val, y_val, y_val - y_ci(1), y_ci(2) - y_val, ...
             x_val - x_ci(1), x_ci(2) - x_val, ...
-            marker_style, 'MarkerSize', 6, 'LineWidth', 1, 'CapSize', 0, 'Color', 'k');
+            marker_style, 'MarkerSize', 6, 'LineWidth', 1, ...
+            'CapSize', 0, 'MarkerEdgeColor', 'none', ...
+            'MarkerFaceColor', 'k');
     end
 
-    axis([0 1 0 1]);
-    plot([0 1], [0 1], 'k:', 'LineWidth', 0.5);
-    axis square;
+    hold on
+    plot(0.5*[1 1], [0 1], 'k:', 'LineWidth', 0.5);
+    plot([0 1],0.5*[1 1], 'k:', 'LineWidth', 0.5);
+    set(gca, 'TickDir', 'Out')
     title(strrep(test_name, '_', ' '), 'Interpreter', 'none');
 end
 
 %% Figure Cleanup and Final Touches
-valid_axes = h_axes(isgraphics(h_axes));
-if isempty(valid_axes), return; end
+try
+    valid_axes = h_axes(isgraphics(h_axes));
+    if isempty(valid_axes), return; end
 
-set(valid_axes, 'TickDir', 'Out', 'Color', 'none', 'LineWidth', 1, ...
-    'XColor', 'k', 'YColor', 'k');
+    set(valid_axes, 'TickDir', 'Out', 'Color', 'none', 'LineWidth', 1, ...
+        'XColor', 'k', 'YColor', 'k');
 
-legend_handles = gobjects(1, length(unique_monkeys));
-for i = 1:length(unique_monkeys)
-    legend_handles(i) = plot(nan, nan, marker_map(i), ...
-        'MarkerSize', 8, 'LineStyle', 'none', 'MarkerEdgeColor', 'k', 'MarkerFaceColor', 'k');
-e
-legend(legend_handles, unique_monkeys, 'Location', 'bestoutside', 'Box', 'off');
+    legend_handles = gobjects(1, length(unique_monkeys));
+    for i = 1:length(unique_monkeys)
+        legend_handles(i) = plot(nan, nan, marker_map(i), ...
+            'MarkerSize', 8, 'LineStyle', 'none', ...
+            'MarkerEdgeColor', 'none', ...
+            'MarkerFaceColor', 'k');
+    end
+    legend(legend_handles, unique_monkeys, 'Location', 'best', ...
+        'Box', 'off');
 
-big_ax = axes('Position', [0.05 0.05 0.8 0.9], 'Visible', 'off');
-ylabel(big_ax, 'Generalization Accuracy', 'Visible', 'on', 'FontSize', 12, 'FontWeight', 'bold');
-xlabel(big_ax, 'Standard Accuracy', 'Visible', 'on', 'FontSize', 12, 'FontWeight', 'bold');
+    big_ax = axes('Position', [0.05 0.05 0.8 0.9], 'Visible', 'off');
+    ylabel(big_ax, 'Generalization Accuracy', 'Visible', 'on', ...
+        'FontSize', 12, 'FontWeight', 'bold');
+    xlabel(big_ax, 'Standard Accuracy', 'Visible', 'on', ...
+        'FontSize', 12, 'FontWeight', 'bold');
 
-sgtitle_str = sprintf('Decoding Generalization in %s', brain_area_name);
-sgtitle(sgtitle_str, 'FontSize', 16, 'FontWeight', 'bold');
+    sgtitle_str = sprintf('Decoding Generalization in %s', ...
+        brain_area_name);
+    sgtitle(sgtitle_str, 'FontSize', 16, 'FontWeight', 'bold');
 
-figures_dir = fullfile(project_root, 'figures', 'decoding');
-if ~exist(figures_dir, 'dir'), mkdir(figures_dir); end
-fig_filename = fullfile(figures_dir, ...
-    sprintf('aggregated_decoding_generalization_%s.pdf', brain_area_name));
-pdfSave(fig_filename, fig.Position(3:4)/72, fig);
-
+    figures_dir = fullfile(project_root, 'figures', 'decoding');
+    if ~exist(figures_dir, 'dir'), mkdir(figures_dir); end
+    fig_filename = fullfile(figures_dir, ...
+        sprintf('aggregated_decoding_generalization_%s.pdf', ...
+        brain_area_name));
+    pdfSave(fig_filename, fig.Position(3:4)/72, fig);
+catch me
+    keyboard
 end
