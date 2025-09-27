@@ -60,7 +60,7 @@ end
 for i_test = 1:n_tests
     plan_item = gen_tests_plan(i_test);
     test_name = plan_item.test_name;
-    
+
     h_axes(i_test) = mySubPlot([n_rows, n_cols, i_test]);
     hold on;
 
@@ -75,7 +75,7 @@ for i_test = 1:n_tests
     % Use the plan to find the correct training model tag
     train_model_tag = plan_item.train_model_tag;
     standard_test_name = [train_model_tag, '_CV'];
-    
+
     if ~isfield(aggregated_data.population_decoding, standard_test_name)
         warning('plot_aggregated_decoding:missing_cv', ...
             ['Could not find standard CV test "%s" for ...' ...
@@ -97,7 +97,7 @@ for i_test = 1:n_tests
 
         if ~isKey(standard_map, session_id) || isempty(session_id)
             % Skip if session_id is empty or no standard counterpart
-            continue; 
+            continue;
         end
 
         std_idx = standard_map(session_id);
@@ -127,39 +127,36 @@ for i_test = 1:n_tests
 end
 
 %% Figure Cleanup and Final Touches
-try
-    valid_axes = h_axes(isgraphics(h_axes));
-    if isempty(valid_axes), return; end
+valid_axes = h_axes(isgraphics(h_axes));
+if isempty(valid_axes), return; end
 
-    set(valid_axes, 'TickDir', 'Out', 'Color', 'none', 'LineWidth', 1, ...
-        'XColor', 'k', 'YColor', 'k');
+set(valid_axes, 'TickDir', 'Out', 'Color', 'none', 'LineWidth', 1, ...
+    'XColor', 'k', 'YColor', 'k');
 
-    legend_handles = gobjects(1, length(unique_monkeys));
-    for i = 1:length(unique_monkeys)
-        legend_handles(i) = plot(nan, nan, marker_map(i), ...
-            'MarkerSize', 8, 'LineStyle', 'none', ...
-            'MarkerEdgeColor', 'none', ...
-            'MarkerFaceColor', 'k');
-    end
-    legend(legend_handles, unique_monkeys, 'Location', 'best', ...
-        'Box', 'off');
+legend_handles = gobjects(1, length(unique_monkeys));
+for i = 1:length(unique_monkeys)
+    legend_handles(i) = plot(nan, nan, marker_map(i), ...
+        'MarkerSize', 8, 'LineStyle', 'none', ...
+        'MarkerEdgeColor', 'none', ...
+        'MarkerFaceColor', 'k');
+end
+legend(legend_handles, unique_monkeys, 'Location', 'best', ...
+    'Box', 'off');
 
-    big_ax = axes('Position', [0.05 0.05 0.8 0.9], 'Visible', 'off');
-    ylabel(big_ax, 'Generalization Accuracy', 'Visible', 'on', ...
-        'FontSize', 12, 'FontWeight', 'bold');
-    xlabel(big_ax, 'Standard Accuracy', 'Visible', 'on', ...
-        'FontSize', 12, 'FontWeight', 'bold');
+big_ax = axes('Position', [0.05 0.05 0.8 0.9], 'Visible', 'off');
+ylabel(big_ax, 'Generalization Accuracy', 'Visible', 'on', ...
+    'FontSize', 12, 'FontWeight', 'bold');
+xlabel(big_ax, 'Standard Accuracy', 'Visible', 'on', ...
+    'FontSize', 12, 'FontWeight', 'bold');
 
-    sgtitle_str = sprintf('Decoding Generalization in %s', ...
-        brain_area_name);
-    sgtitle(sgtitle_str, 'FontSize', 16, 'FontWeight', 'bold');
+sgtitle_str = sprintf('Decoding Generalization in %s', ...
+    brain_area_name);
+sgtitle(sgtitle_str, 'FontSize', 16, 'FontWeight', 'bold');
 
-    figures_dir = fullfile(project_root, 'figures', 'decoding');
-    if ~exist(figures_dir, 'dir'), mkdir(figures_dir); end
-    fig_filename = fullfile(figures_dir, ...
-        sprintf('aggregated_decoding_generalization_%s.pdf', ...
-        brain_area_name));
-    pdfSave(fig_filename, fig.Position(3:4)/72, fig);
-catch me
-    keyboard
+figures_dir = fullfile(project_root, 'figures', 'decoding');
+if ~exist(figures_dir, 'dir'), mkdir(figures_dir); end
+fig_filename = fullfile(figures_dir, ...
+    sprintf('aggregated_decoding_generalization_%s.pdf', ...
+    brain_area_name));
+pdfSave(fig_filename, fig.Position(3:4)/72, fig);
 end
