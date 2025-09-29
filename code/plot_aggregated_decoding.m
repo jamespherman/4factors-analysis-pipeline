@@ -42,8 +42,9 @@ end
 %% Setup Figure and Subplot Layout
 n_cols = 4; % Standardized layout for consistency
 n_rows = ceil(n_tests / n_cols);
-fig = figure('Position', [100, 100, 400 * n_cols, 350 * n_rows], 'Color', 'w');
-h_axes = gobjects(n_tests, 1);
+fig = figure('Position', [5, 5, 170 * n_cols, 170 * n_rows], ...
+    'Color', 'w', 'MenuBar', 'None', 'ToolBar', 'None');
+h_axes = gobjects(n_cols, n_rows);
 
 %% Identify Monkeys for Marker Styling
 monkey_initials = cellfun(@(x) x(1), session_ids, 'UniformOutput', false);
@@ -61,7 +62,10 @@ for i_test = 1:n_tests
     plan_item = gen_tests_plan(i_test);
     test_name = plan_item.test_name;
 
-    h_axes(i_test) = mySubPlot([n_rows, n_cols, i_test]);
+    % convert index to row / col index:
+    [rowInd, colInd] = ind2sub([n_cols, n_rows], i_test);
+    h_axes(rowInd, colInd) = mySubPlot([n_rows, n_cols, i_test], ...
+        'LeftMargin', 0.125);
     hold on;
 
     % --- Find Standard and Generalization Data using the analysis_plan ---
@@ -85,7 +89,8 @@ for i_test = 1:n_tests
             '(Missing CV data)'});
         continue;
     end
-    standard_data = aggregated_data.population_decoding.(standard_test_name);
+    standard_data = aggregated_data.population_decoding.(...
+        standard_test_name);
 
     % Create maps for quick lookup of session data
     standard_map = containers.Map({standard_data.session_id}, ...
@@ -130,8 +135,16 @@ end
 valid_axes = h_axes(isgraphics(h_axes));
 if isempty(valid_axes), return; end
 
+% standardize axes appearance
 set(valid_axes, 'TickDir', 'Out', 'Color', 'none', 'LineWidth', 1, ...
     'XColor', 'k', 'YColor', 'k');
+
+% get rid of x/y tick labels for 'inner' axes:
+h_axes = h_axes';
+h_axes_noX = h_axes(1:end-1,1:end);
+h_axes_noY = h_axes(:,2:end);
+set(h_axes_noX(isgraphics(h_axes_noX)), 'XTickLabel', []);
+set(h_axes_noY(isgraphics(h_axes_noY)), 'YTickLabel', []);
 
 legend_handles = gobjects(1, length(unique_monkeys));
 for i = 1:length(unique_monkeys)
@@ -143,15 +156,16 @@ end
 legend(legend_handles, unique_monkeys, 'Location', 'best', ...
     'Box', 'off');
 
-big_ax = axes('Position', [0.05 0.05 0.8 0.9], 'Visible', 'off');
-ylabel(big_ax, 'Generalization Accuracy', 'Visible', 'on', ...
+big_ax = axes('Position', [0.05 0.05 0.85 0.85], 'Visible', 'off');
+ylo = ylabel(big_ax, sprintf('Generalization Accuracy - %s', ...
+    brain_area_name), ...
+    'Visible', 'on', ...
     'FontSize', 12, 'FontWeight', 'bold');
-xlabel(big_ax, 'Standard Accuracy', 'Visible', 'on', ...
+ylo.Position = [-0.015 0.5 0];
+xlo = xlabel(big_ax, sprintf('Standard Accuracy - %s', ...
+    brain_area_name), ...
+    'Visible', 'on', ...
     'FontSize', 12, 'FontWeight', 'bold');
-
-sgtitle_str = sprintf('Decoding Generalization in %s', ...
-    brain_area_name);
-sgtitle(sgtitle_str, 'FontSize', 16, 'FontWeight', 'bold');
 
 figures_dir = fullfile(project_root, 'figures', 'decoding');
 if ~exist(figures_dir, 'dir'), mkdir(figures_dir); end
