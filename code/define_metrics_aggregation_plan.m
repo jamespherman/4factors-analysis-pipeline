@@ -10,11 +10,11 @@ function metrics_plan = define_metrics_aggregation_plan()
     % Part 1: Define scalar metrics to be collected for every neuron.
     % Each entry defines a column in the output metrics table.
     metrics_plan.per_neuron_metrics(1).ColumnName = 'BaselineFR';
-    metrics_plan.per_neuron_metrics(1).SourcePath = 'metrics.baseline_frs';
+    metrics_plan.per_neuron_metrics(1).SourcePath = 'analysis.metrics.baseline_frs';
     
     metrics_plan.per_neuron_metrics(2).ColumnName = 'WaveformDuration';
     metrics_plan.per_neuron_metrics(2).SourcePath = ...
-        'metrics.wf_metrics.peak_trough_ms';
+        'analysis.metrics.wf_metrics.peak_trough_ms';
     
     metrics_plan.per_neuron_metrics(3).ColumnName = 'IsSelected';
     metrics_plan.per_neuron_metrics(3).SourcePath = ...
