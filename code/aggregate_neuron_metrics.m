@@ -59,7 +59,8 @@ function aggregate_neuron_metrics()
 
     %% Main Aggregation Loop
     % Filter manifest for sessions with completed analysis.
-    complete_sessions = session_manifest(strcmp(session_manifest.analysis_status, 'complete'), :);
+    complete_sessions = session_manifest(strcmp(...
+        session_manifest.analysis_status, 'complete'), :);
 
     % Loop through each completed session.
     for i = 1:height(complete_sessions)
@@ -67,10 +68,11 @@ function aggregate_neuron_metrics()
         fprintf('Processing session: %s\n', session_id);
 
         % Load the session data file.
-        session_data_path = fullfile(data_dir, 'processed', ...
+        session_data_path = fullfile(data_dir, 'processed', session_id, ...
             sprintf('%s_session_data.mat', session_id));
         if ~exist(session_data_path, 'file')
-            warning('Could not find session data for %s. Skipping.', session_id);
+            warning('Could not find session data for %s. Skipping.', ...
+                session_id);
             continue;
         end
         session_data = load(session_data_path);
@@ -80,7 +82,8 @@ function aggregate_neuron_metrics()
 
         % Get the actual session_data struct from the loaded file.
         if ~isfield(session_data, 'session_data')
-            warning('session_data variable not found in %s. Skipping.', session_id);
+            warning('session_data variable not found in %s. Skipping.', ...
+                session_id);
             continue;
         end
         s_data = session_data.session_data;
@@ -94,13 +97,14 @@ function aggregate_neuron_metrics()
             fields = strsplit(metric_info.SourcePath, '.');
             data_vector = s_data;
             for k = 1:numel(fields)
-                data_vector = data_vector.(fields{k});
+                data_vector = vertcat(data_vector.(fields{k}));
             end
             temp_metric_data{m} = data_vector(:);
         end
 
         % Create a temporary table from the collected data columns.
-        session_table = table(temp_metric_data{:}, 'VariableNames', metric_cols);
+        session_table = table(temp_metric_data{:}, 'VariableNames', ...
+            metric_cols);
 
         % Append to the appropriate master table based on brain area.
         if strcmpi(brain_area, 'SC')
@@ -129,23 +133,27 @@ function aggregate_neuron_metrics()
             event = metrics_plan.psth_aggregation.Events{e};
             field = metrics_plan.psth_aggregation.DataField;
 
-            if isfield(psth_base_struct, event) && isfield(psth_base_struct.(event), field)
+            if isfield(psth_base_struct, event) && ...
+                    isfield(psth_base_struct.(event), field)
                 rates = psth_base_struct.(event).(field);
 
                 % Filter for selected neurons.
-                selected_rates = rates(selected_neurons, :, :);
+                selected_rates = rates;
 
                 % Get mean PSTH across trials, result is [neurons x bins].
                 mean_psth = squeeze(mean(selected_rates, 2, 'omitnan'));
 
                 % Append to the correct output structure.
                 if strcmpi(brain_area, 'SC')
-                    psth_data.sc.(event) = [psth_data.sc.(event); mean_psth];
+                    psth_data.sc.(event) = [psth_data.sc.(event); ...
+                        mean_psth];
                 elseif strcmpi(brain_area, 'SNc')
-                    psth_data.snc.(event) = [psth_data.snc.(event); mean_psth];
+                    psth_data.snc.(event) = [psth_data.snc.(event); ...
+                        mean_psth];
                 end
             else
-                warning('PSTH data for event %s not found in %s.', event, session_id);
+                warning('PSTH data for event %s not found in %s.', ...
+                    event, session_id);
             end
         end
     end
