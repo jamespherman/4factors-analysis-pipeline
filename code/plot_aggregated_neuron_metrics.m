@@ -27,7 +27,7 @@ end
 
 % Load the data
 fprintf('Loading aggregated data from %s...\n', data_path);
-load(data_path, 'psth_data', 'sc_metrics', 'snc_metrics', 'psth_time_vector');
+load(data_path, 'psth_data', 'sc_metrics', 'snc_metrics', 'psth_time_vectors');
 fprintf('Data loaded successfully.\n');
 
 %% Figure 1: Grand Average PSTHs
@@ -71,10 +71,11 @@ for row = 1:n_rows
             mean_psth = normrnd(mean_psth, std(mean_psth));
         end
 
-        % Plot the grand average PSTH using the single-PSTH convention
-        hBS = barStairsFill(psth_time_vector, zeros(...
-            size(mean_psth)), ...
-            mean_psth);
+        % Get the correct time vector for this specific event
+        time_vector = psth_time_vectors.(event_name);
+
+        % Plot the grand average PSTH using the correct time vector
+        hBS = barStairsFill(time_vector, zeros(size(mean_psth)), mean_psth);
         delete(hBS(2:3)); % Remove the baseline stair
         set(hBS(1), 'FaceColor', 'k', 'EdgeColor', 'none'); % Set area fill
 
