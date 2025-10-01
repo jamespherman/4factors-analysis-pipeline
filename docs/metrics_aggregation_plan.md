@@ -18,7 +18,7 @@ Each element in this struct array corresponds to one metric (i.e., one column in
 | Field | Type | Description |
 | :--- | :--- | :--- |
 | `ColumnName` | `char` | The desired name for the column in the final aggregated `table` (e.g., `'BaselineFR'`). |
-| `SourcePath` | `char` | The full path to the data field within the `session_data` structure, using dot notation (e.g., `'metrics.baseline_frs'`). The aggregation script will use this path to dynamically access the data. |
+| `SourcePath` | `char` | The full path to the data field within the `session_data` structure, using dot notation (e.g., `'analysis.metrics.baseline_frs'`). The aggregation script will use this path to dynamically access the data. |
 
 ---
 
