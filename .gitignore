@@ -3,3 +3,5 @@
 .DS_Store
 *.asv
 *.mat
+.DS_Store
+code/.DS_Store
