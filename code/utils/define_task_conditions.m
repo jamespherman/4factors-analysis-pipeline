@@ -500,6 +500,20 @@ conditions.is_bullseye_target = is_bullseye_target(masterMask);
 conditions.is_high_probability = isHighProbability(masterMask);
 conditions.is_low_probability = isLowProbability(masterMask);
 
+% --- SNc Subregion Masks ---
+% These masks apply uniformly to all trials based on session metadata.
+% They enable testing Hypothesis 2 about SNc subregion specialization.
+n_trials = sum(masterMask);
+if isfield(sessionData.metadata, 'snc_subregion')
+    snc_subregion = sessionData.metadata.snc_subregion;
+    conditions.is_rvmSNc = repmat(strcmp(snc_subregion, 'rvmSNc'), n_trials, 1);
+    conditions.is_cdlSNc = repmat(strcmp(snc_subregion, 'cdlSNc'), n_trials, 1);
+else
+    % Default to false if not set (e.g., SC sessions or legacy data)
+    conditions.is_rvmSNc = false(n_trials, 1);
+    conditions.is_cdlSNc = false(n_trials, 1);
+end
+
 %% --- Create Categorical Factors for ANOVA ---
 % This section creates the final categorical grouping variables for
 % the ANOVA, filtered by the masterMask.

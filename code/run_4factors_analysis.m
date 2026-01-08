@@ -97,6 +97,10 @@ for i = 1:height(manifest)
     % make sure we have all our metadata:
     session_data.metadata = table2struct(manifest(i,:));
 
+    % Add SNc subregion to metadata (for Hypothesis 2: SNc subregion specialization)
+    session_data.metadata.snc_subregion = parse_snc_subregion(...
+        session_data.metadata.grid_hole, session_data.metadata.brain_area);
+
     % assume that data has not been updated:
     data_updated = false;
 
