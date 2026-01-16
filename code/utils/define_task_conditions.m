@@ -96,7 +96,7 @@ for i = 1:length(baseline_conditions)
     condition_defs.baseline_plan(i).name = baseline_conditions{i};
 end
 
-% D. ROC Analysis Plan
+% D. ROC Analysis Plan (Bin-by-Bin)
 % Each element defines a bin-by-bin ROC comparison. The ROC
 % comparisons will be run for all events defined in
 % condition_defs.events.
@@ -125,6 +125,95 @@ for i = 1:size(roc_plan_def, 1)
     condition_defs.roc_plan(i).cond2      = roc_plan_def{i, 3};
     condition_defs.roc_plan(i).trial_mask = roc_plan_def{i, 4};
 end
+
+% D2. Window-Based ROC Analysis Plan
+% Computes ROC AUC values in fixed time windows for each neuron,
+% providing a single summary metric per neuron × factor × epoch
+% suitable for scatter plots and population-level comparisons.
+%
+% Epoch windows vary by brain area to account for different response
+% latencies (SC has faster visual responses than SNc).
+
+% Define epoch windows per brain area
+% Format: struct with fields for each epoch, containing [start, end] in seconds
+condition_defs.window_roc_plan.epoch_windows = struct();
+
+% Visual epoch: aligned to targetOn
+condition_defs.window_roc_plan.epoch_windows.visual = struct(...
+    'event', 'targetOn', ...
+    'SC',    [0.050, 0.250], ...  % 50-250ms for SC (faster visual responses)
+    'SNc',   [0.100, 0.300] ...   % 100-300ms for SNc (slower visual responses)
+);
+
+% Delay epoch: aligned to fixOff (end of delay period)
+condition_defs.window_roc_plan.epoch_windows.delay = struct(...
+    'event', 'fixOff', ...
+    'SC',    [-0.200, 0.000], ... % -200 to 0ms relative to fixOff
+    'SNc',   [-0.200, 0.000] ...  % Same window for both areas
+);
+
+% Peri-saccadic epoch: aligned to saccadeOnset
+condition_defs.window_roc_plan.epoch_windows.perisaccade = struct(...
+    'event', 'saccadeOnset', ...
+    'SC',    [-0.050, 0.100], ... % -50 to 100ms around saccade onset
+    'SNc',   [-0.050, 0.100] ...  % Same window for both areas
+);
+
+% Post-reward epoch: aligned to reward
+condition_defs.window_roc_plan.epoch_windows.postreward = struct(...
+    'event', 'reward', ...
+    'SC',    [0.100, 0.400], ...  % 100-400ms after reward
+    'SNc',   [0.100, 0.400] ...   % Same window for both areas
+);
+
+% Define factor comparisons for window ROC
+% Each factor specifies:
+%   - name: factor identifier (reuses roc_plan names)
+%   - cond1, cond2: condition mask names for high vs low comparison
+%   - trial_mask: cell array of masks to AND together for trial selection
+%                 This allows combining spatial restriction with factor-specific subsets
+condition_defs.window_roc_plan.factors = struct(...
+    'name', {}, 'cond1', {}, 'cond2', {}, 'trial_mask', {} ...
+);
+
+% Reward: all contralateral trials
+condition_defs.window_roc_plan.factors(1) = struct(...
+    'name', 'reward', ...
+    'cond1', condition_defs.condition_masks.reward{1}, ...   % is_high_reward
+    'cond2', condition_defs.condition_masks.reward{2}, ...   % is_low_reward
+    'trial_mask', {{'is_contralateral_target'}} ...          % All contralateral trials
+);
+
+% Salience: bullseye trials only (contralateral)
+condition_defs.window_roc_plan.factors(2) = struct(...
+    'name', 'salience', ...
+    'cond1', condition_defs.condition_masks.salience{1}, ... % is_high_salience
+    'cond2', condition_defs.condition_masks.salience{2}, ... % is_low_salience
+    'trial_mask', {{'is_contralateral_target', 'is_bullseye_target'}} ...
+);
+
+% Probability: all contralateral trials
+condition_defs.window_roc_plan.factors(3) = struct(...
+    'name', 'probability', ...
+    'cond1', condition_defs.condition_masks.probability{1}, ... % is_high_probability
+    'cond2', condition_defs.condition_masks.probability{2}, ... % is_low_probability
+    'trial_mask', {{'is_contralateral_target'}} ...
+);
+
+% Identity: image trials only (contralateral)
+condition_defs.window_roc_plan.factors(4) = struct(...
+    'name', 'identity', ...
+    'cond1', condition_defs.condition_masks.identity{1}, ... % is_face_target
+    'cond2', condition_defs.condition_masks.identity{2}, ... % is_nonface_target
+    'trial_mask', {{'is_contralateral_target', 'is_image_target'}} ...
+);
+
+% Analysis parameters
+condition_defs.window_roc_plan.params = struct(...
+    'min_trials', 5, ...           % Minimum trials per condition
+    'n_bootstrap', 200, ...        % Bootstrap replicates for CI
+    'alpha', 0.05 ...              % Significance level for CI
+);
 
 % E. Per-Neuron Diagnostic Plots
 diag_plots(1).event = 'targetOn';

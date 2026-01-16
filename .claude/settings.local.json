@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(matlab -batch:*)",
+      "Bash(dir \"D:\\\\OneDrive - University of Pittsburgh\\\\Code\\\\4factors-analysis-pipeline\\\\figures\\\\neuron_summaries\\\\*.pdf\")",
+      "Bash(where:*)",
+      "Bash(timeout:*)",
+      "Bash(ping:*)",
+      "Bash(mdfind:*)",
+      "Bash(/Applications/MATLAB_R2025a.app/bin/matlab:*)"
+    ]
+  }
+}

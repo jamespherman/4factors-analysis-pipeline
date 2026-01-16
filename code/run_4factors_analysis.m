@@ -265,6 +265,22 @@ for i = 1:height(manifest)
         end
     end
 
+    % B2. Window-Based ROC Analysis
+    % Check if window_roc results are missing
+    if isfield(analysis_plan, 'window_roc_plan')
+        path_to_check = fullfile('analysis', 'window_roc');
+        S = substruct_from_path(path_to_check);
+        is_missing = false;
+        try
+            subsref(session_data, S);
+        catch
+            is_missing = true;
+        end
+        if is_missing || force_rerun.analyses
+            n_total_steps = n_total_steps + 1;
+        end
+    end
+
     % C. N-way ANOVA Analysis
     if isfield(analysis_plan, 'anova_plan')
         for j = 1:length(analysis_plan.anova_plan)
@@ -539,6 +555,35 @@ for i = 1:height(manifest)
         end
     end
 
+    % B2. Window-Based ROC Analysis
+    % Computes ROC AUC in fixed time windows per neuron × factor × epoch
+    if isfield(analysis_plan, 'window_roc_plan')
+        path_to_check = fullfile('analysis', 'window_roc');
+        S = substruct_from_path(path_to_check);
+        is_missing = false;
+        try
+            subsref(session_data, S);
+        catch
+            is_missing = true;
+        end
+
+        if is_missing || force_rerun.analyses
+            step_counter = step_counter + 1;
+            fprintf(['\n--- Session %s: Step %d/%d: Window-Based ROC ' ...
+                'Analysis ---\n'], unique_id, step_counter, n_total_steps);
+            giveFeed('--> Running Window-Based ROC Analysis...');
+
+            % Run the analysis
+            window_roc_results = analyze_window_roc(session_data, ...
+                conditions, analysis_plan, core_data);
+
+            % Store the results
+            session_data.analysis.window_roc = window_roc_results;
+            data_updated = true;
+            giveFeed('--> Window-Based ROC Analysis complete.');
+        end
+    end
+
     % C. N-way ANOVA Analysis
     if isfield(analysis_plan, 'anova_plan')
         for j = 1:length(analysis_plan.anova_plan)
@@ -736,6 +781,17 @@ for i = 1:height(manifest)
                 end
             end
             if ~is_analysis_complete, break; end
+        end
+    end
+
+    % B2. Check window-based ROC analysis
+    if is_analysis_complete && isfield(analysis_plan, 'window_roc_plan')
+        path_to_check = fullfile('analysis', 'window_roc');
+        S = substruct_from_path(path_to_check);
+        try
+            subsref(session_data, S);
+        catch
+            is_analysis_complete = false;
         end
     end
 
