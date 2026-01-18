@@ -51,6 +51,16 @@ condition_defs.events = {'fixOn', 'targetOn', 'fixOff', 'saccadeOnset', 'reward'
 % control over event discovery.
 condition_defs.event_field_names = {'event', 'train_event', 'test_event'};
 
+% Neuron Inclusion Configuration
+% Controls whether strict screening criteria are applied to select neurons.
+% When use_strict_screening is false, all kilosort clusters are included
+% in analyses, which is useful for exploratory analysis.
+% When true, existing screening criteria (task modulation for SC,
+% firing rate and waveform shape for SNc) are applied.
+condition_defs.neuron_inclusion = struct(...
+    'use_strict_screening', false ... % false = include all neurons
+);
+
 % Baseline Firing Rate Configuration
 % Defines the parameters for calculating the baseline firing rate, which is
 % used as a standard reference for various analyses.
@@ -214,6 +224,15 @@ condition_defs.window_roc_plan.params = struct(...
     'n_bootstrap', 200, ...        % Bootstrap replicates for CI
     'alpha', 0.05 ...              % Significance level for CI
 );
+
+% Location selection mode for window ROC analysis
+% 'preferred' - Use per-neuron preferred location (SC only, maximizes sensitivity)
+% 'contralateral' - Pool all contralateral locations (legacy behavior)
+% When 'preferred' is used:
+%   - For reward/salience/identity: uses each neuron's RF-optimal location (1-4)
+%   - For probability: uses location 1 or 3 (whichever has stronger visual response)
+%   - is_contralateral_target is NOT applied (location handled per-neuron)
+condition_defs.window_roc_plan.location_mode = 'preferred';
 
 % E. Per-Neuron Diagnostic Plots
 diag_plots(1).event = 'targetOn';
@@ -548,8 +567,8 @@ isHighReward = (trialInfo.rewardDuration > 200);
 isLowReward = (trialInfo.rewardDuration < 200);
 
 % 2. Salience
-isHighSalience = (trialInfo.salience == 2);
-isLowSalience = (trialInfo.salience == 1);
+isHighSalience = (trialInfo.salience == 1);
+isLowSalience = (trialInfo.salience == 2);
 
 % 3. Identity (stimType: 1=Face, 2=Non-face, >2=Bullseye)
 isFaceTarget = (trialInfo.stimType == 1);
@@ -588,6 +607,10 @@ conditions.is_image_target = is_image_target(masterMask);
 conditions.is_bullseye_target = is_bullseye_target(masterMask);
 conditions.is_high_probability = isHighProbability(masterMask);
 conditions.is_low_probability = isLowProbability(masterMask);
+
+% --- Target Location Index (for per-neuron preferred location analysis) ---
+% Store the targetLocIdx (1-4) for each trial, filtered by masterMask
+conditions.targetLocIdx = trialInfo.targetLocIdx(masterMask);
 
 % --- SNc Subregion Masks ---
 % These masks apply uniformly to all trials based on session metadata.

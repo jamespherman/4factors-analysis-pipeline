@@ -18,6 +18,9 @@
 %                    structure: core_data.spikes.<event>.rates is
 %                    [n_neurons × n_trials × n_time_bins] and
 %                    core_data.spikes.<event>.time_vector gives bin centers.
+%   preferred_locations - (Optional) Output of compute_preferred_locations.
+%                    Required when location_mode is 'preferred'. Contains
+%                    per-neuron preferred locations for trial selection.
 %
 % OUTPUT:
 %   window_roc - Nested struct organized as window_roc.<epoch>.<factor>
@@ -26,16 +29,22 @@
 %                  .p:        [n_neurons × 1] p-values from permutation test
 %                  .ci:       [n_neurons × 2] confidence intervals [lower, upper]
 %                  .n_trials: [n_neurons × 2] trial counts [n_cond1, n_cond2]
+%                  .preferred_location: [n_neurons × 1] location used (when mode='preferred')
 %
 % Author: Claude Code
 % Date: 2026-01-15
 
 function window_roc = analyze_window_roc(session_data, conditions, ...
-    condition_defs, core_data)
+    condition_defs, core_data, preferred_locations)
 
 %% Setup
 [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
 addpath(fullfile(script_dir, 'utils'));
+
+% Handle optional preferred_locations argument
+if nargin < 5
+    preferred_locations = [];
+end
 
 % Get analysis configuration
 wroc_plan = condition_defs.window_roc_plan;
@@ -47,6 +56,40 @@ if ~ismember(brain_area, {'SC', 'SNc'})
     warning('analyze_window_roc:unknownBrainArea', ...
         'Unknown brain_area ''%s''. Defaulting to SC windows.', brain_area);
     brain_area = 'SC';
+end
+
+% Determine location selection mode
+if isfield(wroc_plan, 'location_mode')
+    location_mode = wroc_plan.location_mode;
+else
+    location_mode = 'contralateral';  % Default for backward compatibility
+end
+
+% For preferred mode on SC, verify preferred_locations is available
+use_preferred_location = strcmp(location_mode, 'preferred') && ...
+                         strcmp(brain_area, 'SC') && ...
+                         ~isempty(preferred_locations);
+
+if strcmp(location_mode, 'preferred') && strcmp(brain_area, 'SC') && isempty(preferred_locations)
+    warning('analyze_window_roc:missingPreferredLocations', ...
+        ['location_mode is ''preferred'' but preferred_locations not provided. ' ...
+         'Falling back to ''contralateral'' mode.']);
+    use_preferred_location = false;
+end
+
+% For SNc, always use contralateral mode (per requirements)
+if strcmp(brain_area, 'SNc')
+    use_preferred_location = false;
+end
+
+% Get targetLocIdx if using preferred locations
+if use_preferred_location
+    if isfield(conditions, 'targetLocIdx')
+        targetLocIdx = conditions.targetLocIdx;
+    else
+        error('analyze_window_roc:missingTargetLocIdx', ...
+            'targetLocIdx not found in conditions struct. Required for preferred location mode.');
+    end
 end
 
 % Get epoch names
@@ -109,6 +152,7 @@ for i_epoch = 1:length(epoch_names)
         p_vals = NaN(n_neurons, 1);
         ci_vals = NaN(n_neurons, 2);
         n_trials_vals = NaN(n_neurons, 2);
+        preferred_loc_used = NaN(n_neurons, 1);  % Track which location was used
 
         % Get condition masks
         if ~isfield(conditions, factor_config.cond1) || ...
@@ -119,17 +163,28 @@ for i_epoch = 1:length(epoch_names)
             continue;
         end
 
-        cond1_mask = conditions.(factor_config.cond1);
-        cond2_mask = conditions.(factor_config.cond2);
+        % Get base condition masks (high vs low)
+        base_cond1_mask = conditions.(factor_config.cond1);
+        base_cond2_mask = conditions.(factor_config.cond2);
 
-        % Apply trial subset masks (AND all masks together)
-        trial_masks = factor_config.trial_mask;
-        if ~isempty(trial_masks)
-            for i_mask = 1:length(trial_masks)
-                mask_name = trial_masks{i_mask};
+        % Determine which non-spatial trial masks to apply
+        % (e.g., is_bullseye_target for salience, is_image_target for identity)
+        trial_masks_to_apply = factor_config.trial_mask;
+        if use_preferred_location
+            % Remove 'is_contralateral_target' from trial masks when using preferred location
+            % because location selection is handled per-neuron
+            trial_masks_to_apply = trial_masks_to_apply(~strcmp(trial_masks_to_apply, 'is_contralateral_target'));
+        end
+
+        % Apply non-spatial trial subset masks to base conditions
+        base_cond1_filtered = base_cond1_mask;
+        base_cond2_filtered = base_cond2_mask;
+        if ~isempty(trial_masks_to_apply)
+            for i_mask = 1:length(trial_masks_to_apply)
+                mask_name = trial_masks_to_apply{i_mask};
                 if isfield(conditions, mask_name)
-                    cond1_mask = cond1_mask & conditions.(mask_name);
-                    cond2_mask = cond2_mask & conditions.(mask_name);
+                    base_cond1_filtered = base_cond1_filtered & conditions.(mask_name);
+                    base_cond2_filtered = base_cond2_filtered & conditions.(mask_name);
                 else
                     warning('analyze_window_roc:missingTrialMask', ...
                         'Trial mask ''%s'' not found for factor ''%s''.', ...
@@ -140,6 +195,39 @@ for i_epoch = 1:length(epoch_names)
 
         %% Process Each Neuron
         for i_neuron = 1:n_neurons
+            % Construct neuron-specific trial masks
+            if use_preferred_location
+                % Use per-neuron preferred location
+                if strcmp(factor_name, 'probability')
+                    % Probability is only manipulated at locations 1 & 3
+                    neuron_pref_loc = preferred_locations.for_probability(i_neuron);
+                else
+                    % Reward, salience, identity use the general preferred location
+                    neuron_pref_loc = preferred_locations.for_factors(i_neuron);
+                end
+
+                preferred_loc_used(i_neuron) = neuron_pref_loc;
+
+                % Create location mask for this neuron
+                loc_mask = (targetLocIdx == neuron_pref_loc);
+
+                % Combine with base condition masks
+                cond1_mask = base_cond1_filtered & loc_mask;
+                cond2_mask = base_cond2_filtered & loc_mask;
+            else
+                % Use contralateral mask (legacy behavior)
+                cond1_mask = base_cond1_filtered;
+                cond2_mask = base_cond2_filtered;
+
+                % Apply contralateral mask if present in original config
+                if any(strcmp(factor_config.trial_mask, 'is_contralateral_target'))
+                    if isfield(conditions, 'is_contralateral_target')
+                        cond1_mask = cond1_mask & conditions.is_contralateral_target;
+                        cond2_mask = cond2_mask & conditions.is_contralateral_target;
+                    end
+                end
+            end
+
             % Get window-averaged firing rates for this neuron
             neuron_rates = window_rates(i_neuron, :)';  % [n_trials × 1]
 
@@ -181,8 +269,18 @@ for i_epoch = 1:length(epoch_names)
         window_roc.(epoch_name).(factor_name).p = p_vals;
         window_roc.(epoch_name).(factor_name).ci = ci_vals;
         window_roc.(epoch_name).(factor_name).n_trials = n_trials_vals;
+
+        % Store preferred location info when using preferred mode
+        if use_preferred_location
+            window_roc.(epoch_name).(factor_name).preferred_location = preferred_loc_used;
+        end
     end
 end
+
+% Store location mode metadata in output
+window_roc.metadata.location_mode = location_mode;
+window_roc.metadata.use_preferred_location = use_preferred_location;
+window_roc.metadata.brain_area = brain_area;
 
 end
 

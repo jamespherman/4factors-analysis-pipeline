@@ -383,10 +383,10 @@ for i = 1:height(manifest)
         session_data.metadata.unique_id = session_id;
         if strcmp(session_data.metadata.brain_area, 'SNc')
             selected_neurons = screen_da_neurons(session_data, ...
-                session_id, project_root);
+                session_id, project_root, analysis_plan);
         elseif strcmp(session_data.metadata.brain_area, 'SC')
             [selected_neurons, sig_epoch_comp, scSide] = ...
-                screen_sc_neurons(session_data, project_root);
+                screen_sc_neurons(session_data, project_root, analysis_plan);
             session_data.analysis.scSide = scSide;
             session_data.analysis.sig_epoch_comparison = sig_epoch_comp;
         else
@@ -571,11 +571,34 @@ for i = 1:height(manifest)
             step_counter = step_counter + 1;
             fprintf(['\n--- Session %s: Step %d/%d: Window-Based ROC ' ...
                 'Analysis ---\n'], unique_id, step_counter, n_total_steps);
+
+            % Compute per-neuron preferred locations (for SC neurons)
+            % This determines which target location produces the strongest
+            % response for each neuron, enabling more sensitive factor comparisons.
+            preferred_locations = [];
+            if strcmp(session_data.metadata.brain_area, 'SC') && ...
+               isfield(analysis_plan.window_roc_plan, 'location_mode') && ...
+               strcmp(analysis_plan.window_roc_plan.location_mode, 'preferred')
+                giveFeed('--> Computing per-neuron preferred locations...');
+                preferred_locations = compute_preferred_locations(...
+                    session_data, core_data, conditions, analysis_plan);
+
+                % Store preferred locations for later reference
+                session_data.analysis.preferred_locations = preferred_locations;
+
+                % Report distribution
+                pref_locs = preferred_locations.for_factors;
+                for loc = 1:4
+                    n_at_loc = sum(pref_locs == loc);
+                    giveFeed(sprintf('    Location %d: %d neurons', loc, n_at_loc));
+                end
+            end
+
             giveFeed('--> Running Window-Based ROC Analysis...');
 
-            % Run the analysis
+            % Run the analysis (pass preferred_locations, may be empty for SNc)
             window_roc_results = analyze_window_roc(session_data, ...
-                conditions, analysis_plan, core_data);
+                conditions, analysis_plan, core_data, preferred_locations);
 
             % Store the results
             session_data.analysis.window_roc = window_roc_results;

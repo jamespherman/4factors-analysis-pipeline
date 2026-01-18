@@ -167,6 +167,26 @@ for area_cell = keys(aggregated_data_map)
                 template_struct;
         end
     end
+
+    % 4. Window-Based ROC Results
+    if isfield(analysis_plan, 'window_roc_plan')
+        agg_data.window_roc = struct();
+        template_struct = struct('session_id', '', 'n_neurons', NaN, ...
+            'auc', [], 'p', [], 'ci', [], 'n_trials', []);
+
+        epoch_names = fieldnames(analysis_plan.window_roc_plan.epoch_windows);
+        factor_names = {analysis_plan.window_roc_plan.factors.name};
+
+        for i_epoch = 1:length(epoch_names)
+            epoch_name = epoch_names{i_epoch};
+            agg_data.window_roc.(epoch_name) = struct();
+            for i_factor = 1:length(factor_names)
+                factor_name = factor_names{i_factor};
+                agg_data.window_roc.(epoch_name).(factor_name) = template_struct;
+            end
+        end
+    end
+
     aggregated_data_map(area) = agg_data;
 end
 giveFeed('Data structures initialized.');
@@ -395,6 +415,44 @@ for i = 1:nSessions
             else
                 agg_data.population_decoding.(test_name)(end+1) = ...
                     session_struct;
+            end
+        end
+    end
+
+    % --- 4. Aggregate Window-Based ROC Results ---
+    if isfield(agg_data, 'window_roc') && ...
+            isfield(analysis_results, 'window_roc')
+
+        epoch_names = fieldnames(analysis_results.window_roc);
+        for i_epoch = 1:length(epoch_names)
+            epoch_name = epoch_names{i_epoch};
+
+            if ~isfield(agg_data.window_roc, epoch_name)
+                continue;
+            end
+
+            factor_names = fieldnames(analysis_results.window_roc.(epoch_name));
+            for i_factor = 1:length(factor_names)
+                factor_name = factor_names{i_factor};
+
+                if ~isfield(agg_data.window_roc.(epoch_name), factor_name)
+                    continue;
+                end
+
+                source_data = analysis_results.window_roc.(epoch_name).(factor_name);
+                if ~isfield(source_data, 'auc')
+                    continue;
+                end
+
+                session_struct = source_data;
+                session_struct.session_id = session_id;
+                session_struct.n_neurons = n_neurons;
+
+                if length(session_ids.(lower(brain_area))) == 1
+                    agg_data.window_roc.(epoch_name).(factor_name) = session_struct;
+                else
+                    agg_data.window_roc.(epoch_name).(factor_name)(end+1) = session_struct;
+                end
             end
         end
     end
