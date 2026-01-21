@@ -2,7 +2,7 @@
 
 This document tracks the development of the 4factors analysis pipeline.
 
-**Last Updated:** 2025-01-08
+**Last Updated:** 2026-01-21 (Task 8.3 SNc classification with arrayROC-based modulation detection)
 
 ---
 
@@ -96,31 +96,32 @@ This document tracks the development of the 4factors analysis pipeline.
 
 ## Part 6: SNc Subregion Analysis (NEW)
 
-- [ ] **Task 6.1: Subregion Labeling**
+- [x] **Task 6.1: Subregion Labeling**
   - Parse grid coordinates from manifest
   - Add `snc_subregion` field to session metadata
   - Create `is_rvmSNc` and `is_cdlSNc` condition masks
   - Rule: Y ∈ {3,4} → rvmSNc; Y ∈ {1,2} → cdlSNc (SNc sessions only)
 
-- [ ] **Task 6.2: Subregion Comparison Figures**
+- [x] **Task 6.2: Subregion Comparison Figures**
   - Grouped bar plot: mean ROC by factor × subregion
   - Violin plots: ROC distributions by subregion
   - Statistical annotations (Wilcoxon rank-sum)
+  - Implementation: `plot_snc_subregion_comparison.m`
 
 ---
 
 ## Part 7: Window-Based ROC and Neuron Metrics (NEW)
 
-- [ ] **Task 7.1: Window-Based ROC (`analyze_window_roc.m`)**
+- [x] **Task 7.1: Window-Based ROC (`analyze_window_roc.m`)**
   - Fixed-window ROC AUC (not max-in-window)
   - Area-specific windows: SC visual [50, 250]ms; SNc visual [100, 300]ms
   - Output: Single summary metric per neuron/factor/epoch
 
-- [ ] **Task 7.2: Neuron Metrics Table**
+- [x] **Task 7.2: Neuron Metrics Table**
   - Create `neuron_metrics_table` in aggregation
   - Fields: session_id, cluster_id, brain_area, snc_subregion, neuron_type, ROC values per epoch/factor
 
-- [ ] **Task 7.3: ROC Scatter Plots (`plot_roc_scatter.m`)**
+- [x] **Task 7.3: ROC Scatter Plots (`plot_roc_scatter.m`)**
   - Pairwise factor comparisons (6 panels for 4 factors)
   - Hover tooltips for neuron identification
   - CSV backup for each plot
@@ -129,32 +130,47 @@ This document tracks the development of the 4factors analysis pipeline.
 
 ## Part 8: Expanded Neuron Classification (NEW)
 
-- [ ] **Task 8.1: Classification Categories**
+- [x] **Task 8.1: SC Neuron Classification Categories**
   - Expand beyond binary `selected_neurons`
-  - Categories: visually_excited, visually_suppressed, delay_modulated, saccade_modulated, unmodulated
-  - Suppression criterion: significant decrease for CONTRALATERAL targets
+  - Categories: 'classic', 'interneuron', 'excluded'
+  - Integrated: `apply_neuron_screening.m` calls `screen_sc_neurons.m` for SC sessions
+  - `neuron_class` stored in `screening_info` and propagated to `neuron_type` in aggregation
 
-- [ ] **Task 8.2: Suppressed Neuron Analysis**
-  - Test Hypothesis 4: Interneurons show non-selective responses
-  - Compute factor-specific ROC for suppressed neurons
+- [ ] **Task 8.2: Putative SC Interneuron Neuron Analysis**
+  - Test Hypothesis 4: Putative SC interneurons show factor-non-selective responses
+  - Compute factor-specific ROC for Putative SC interneuron neurons
   - Compare to chance (ROC ≈ 0.5)
 
-- [ ] **Task 8.3: Update Aggregation**
-  - Include `neuron_type` categorical variable
-  - Filter analyses by neuron type
+- [x] **Task 8.3: SNc Neuron Classification Categories**
+  - Categories: 'modulated', 'excluded'
+  - Implementation: `screen_snc_neurons.m` called from `apply_neuron_screening.m`
+  - Criteria for 'modulated' (ALL must be true):
+    - (a) Significant change in activity (increase OR decrease) for at least 3 consecutive
+          samples using arrayROC bootstrap CI (95% excludes 0.5). Checked at: fixOn,
+          targetOn, fixOff, saccadeOnset, reward via `compute_task_modulation.m`
+    - (b) Mean FR > 1 sp/s (computed over active period)
+    - (c) Not sparse (<=70% of 100ms bins empty across active period)
+  - Generates diagnostic figure: `{session_id}_snc_screening.pdf`
+
+- [x] **Task 8.4: Update Aggregation**
+  - Include `neuron_type` categorical variable in `neuron_metrics_table`
+  - Added screening metrics: `screening_mean_fr`, `screening_sparsity`,
+    `passes_fr_threshold`, `passes_sparsity_threshold`, `is_task_modulated`
+  - Filter analyses by neuron type (enabled by `neuron_type` column)
 
 ---
 
 ## Part 9: Enhanced Neuron Summary PDFs (NEW)
 
-- [ ] **Task 9.1: Single-Page Layout Redesign**
+- [x] **Task 9.1: Single-Page Layout Redesign**
   - 5-column layout: 2 spatial (jph task) + 3 factor (targetOn, saccadeOnset, reward)
   - Include: waveform, ISI, spatial tuning, factor PSTHs, ROC summary table
   - Scope: Generate for modulated + suppressed neurons (not unmodulated)
 
-- [ ] **Task 9.2: ROC Summary Table Integration**
+- [x] **Task 9.2: ROC Summary Table Integration**
   - Embed factor × epoch ROC table with significance markers
   - Enable verification against scatter plot positions
+  - Displays window-based ROC AUC values with * for p < 0.05
 
 ---
 
@@ -239,9 +255,10 @@ Based on analysis rationale document:
 2. Task 9.2: ROC summary table integration
 
 ### Phase 3: Expanded Classification
-1. Task 8.1: Classification categories
-2. Task 8.2: Suppressed neuron analysis
-3. Task 8.3: Update aggregation
+1. Task 8.1: SC Classification categories (classic vs interneuron)
+2. Task 8.2: Putative interneuron analysis
+3. Task 8.3: SNc Classification categories
+4. ~~Task 8.4: Update aggregation~~ (COMPLETE)
 
 ### Phase 4: SC-SNc Interaction
 1. Task 10.1: Link simultaneous sessions

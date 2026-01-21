@@ -55,10 +55,29 @@ condition_defs.event_field_names = {'event', 'train_event', 'test_event'};
 % Controls whether strict screening criteria are applied to select neurons.
 % When use_strict_screening is false, all kilosort clusters are included
 % in analyses, which is useful for exploratory analysis.
-% When true, existing screening criteria (task modulation for SC,
-% firing rate and waveform shape for SNc) are applied.
+% When true, neurons must pass ALL THREE criteria:
+%   1. Mean firing rate threshold (brain-area specific, computed across entire session)
+%   2. Task modulation (significant deviation from baseline at ANY location/event)
+%   3. Sparsity threshold (proportion of empty 100ms bins must be < 0.7)
 condition_defs.neuron_inclusion = struct(...
-    'use_strict_screening', false ... % false = include all neurons
+    'use_strict_screening', true, ...    % true = apply criteria; false = include all
+    'min_firing_rate_sc', 3.5, ...       % sp/s mean FR threshold for SC neurons (changed from 5)
+    'min_firing_rate_snc', 1, ...        % sp/s mean FR threshold for SNc neurons
+    'max_proportion_empty_bins', 0.7, ...% max fraction of 100ms bins with 0 spikes
+    'consecutive_bins_required', 3 ...   % bins needed for modulation detection (changed from 2)
+);
+
+% Modulation Windows for Task Modulation Detection
+% Each event specifies baseline and test windows (in seconds) for detecting
+% task-related modulation. A neuron is "modulated" if N consecutive bins
+% (see consecutive_bins_required above) show significant deviation from baseline.
+% For SNc neurons, all five epochs are checked: fixOn, targetOn, fixOff, saccadeOnset, reward.
+condition_defs.modulation_windows = struct(...
+    'fixOn', struct('baseline', [-0.25, 0], 'test', [0, 0.5]), ...
+    'targetOn', struct('baseline', [-0.25, 0], 'test', [0, 0.5]), ...
+    'fixOff', struct('baseline', [-0.25, 0], 'test', [0, 0.375]), ...
+    'saccadeOnset', struct('baseline', [-0.35, -0.25], 'test', [-0.25, 0.25]), ...
+    'reward', struct('baseline', [-0.25, 0], 'test', [0, 0.5]) ...
 );
 
 % Baseline Firing Rate Configuration
@@ -80,14 +99,17 @@ condition_defs.event_windows = struct(...
 
 % B. Canonical Names for Condition Masks
 % These are the building blocks for the analysis plans below.
+% IMPORTANT: Order is {cond1, cond2} where cond1 = "low" and cond2 = "high".
+% This ensures that when passed to arrayROC(cond1, cond2), AUC > 0.5 means
+% higher firing for the "high" condition (since AUC = P(X2 > X1)).
 condition_defs.condition_masks.reward = ...
-    {'is_high_reward', 'is_low_reward'};
+    {'is_low_reward', 'is_high_reward'};
 condition_defs.condition_masks.salience = ...
-    {'is_high_salience', 'is_low_salience'};
+    {'is_low_salience', 'is_high_salience'};
 condition_defs.condition_masks.identity = ...
-    {'is_face_target', 'is_nonface_target'};
+    {'is_nonface_target', 'is_face_target'};
 condition_defs.condition_masks.probability = ...
-    {'is_high_probability', 'is_low_probability'};
+    {'is_low_probability', 'is_high_probability'};
 condition_defs.condition_masks.spatial = {'is_contralateral_target', ...
     'is_ipsilateral_target', 'is_opposite_rf'};
 
@@ -189,32 +211,32 @@ condition_defs.window_roc_plan.factors = struct(...
 % Reward: all contralateral trials
 condition_defs.window_roc_plan.factors(1) = struct(...
     'name', 'reward', ...
-    'cond1', condition_defs.condition_masks.reward{1}, ...   % is_high_reward
-    'cond2', condition_defs.condition_masks.reward{2}, ...   % is_low_reward
+    'cond1', condition_defs.condition_masks.reward{1}, ...   % is_low_reward
+    'cond2', condition_defs.condition_masks.reward{2}, ...   % is_high_reward
     'trial_mask', {{'is_contralateral_target'}} ...          % All contralateral trials
 );
 
 % Salience: bullseye trials only (contralateral)
 condition_defs.window_roc_plan.factors(2) = struct(...
     'name', 'salience', ...
-    'cond1', condition_defs.condition_masks.salience{1}, ... % is_high_salience
-    'cond2', condition_defs.condition_masks.salience{2}, ... % is_low_salience
+    'cond1', condition_defs.condition_masks.salience{1}, ... % is_low_salience
+    'cond2', condition_defs.condition_masks.salience{2}, ... % is_high_salience
     'trial_mask', {{'is_contralateral_target', 'is_bullseye_target'}} ...
 );
 
 % Probability: all contralateral trials
 condition_defs.window_roc_plan.factors(3) = struct(...
     'name', 'probability', ...
-    'cond1', condition_defs.condition_masks.probability{1}, ... % is_high_probability
-    'cond2', condition_defs.condition_masks.probability{2}, ... % is_low_probability
+    'cond1', condition_defs.condition_masks.probability{1}, ... % is_low_probability
+    'cond2', condition_defs.condition_masks.probability{2}, ... % is_high_probability
     'trial_mask', {{'is_contralateral_target'}} ...
 );
 
 % Identity: image trials only (contralateral)
 condition_defs.window_roc_plan.factors(4) = struct(...
     'name', 'identity', ...
-    'cond1', condition_defs.condition_masks.identity{1}, ... % is_face_target
-    'cond2', condition_defs.condition_masks.identity{2}, ... % is_nonface_target
+    'cond1', condition_defs.condition_masks.identity{1}, ... % is_nonface_target
+    'cond2', condition_defs.condition_masks.identity{2}, ... % is_face_target
     'trial_mask', {{'is_contralateral_target', 'is_image_target'}} ...
 );
 
@@ -566,7 +588,7 @@ end
 isHighReward = (trialInfo.rewardDuration > 200);
 isLowReward = (trialInfo.rewardDuration < 200);
 
-% 2. Salience
+% 2. Salience (0=image, 1=high, 2=low)
 isHighSalience = (trialInfo.salience == 1);
 isLowSalience = (trialInfo.salience == 2);
 
