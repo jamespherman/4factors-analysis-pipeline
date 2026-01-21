@@ -112,3 +112,108 @@ The field at this path is a `[1 x nSessions] struct array` with the following fi
 | `accuracy` | `double` | The mean classification accuracy for the test. |
 | `accuracy_ci` | `[1x2] double` | The 95% confidence interval of the accuracy. |
 | `session_id` | `char` | The unique identifier for the session. |
+
+---
+## 4. Window-Based ROC Analysis
+
+The window-based ROC analysis provides single summary metrics per neuron for each factor and epoch combination. Unlike time-resolved ROC (Section 1.2), this analysis computes a single AUC value per neuron by averaging firing rates within a predefined time window.
+
+-   **Path:** `.(brain_area_data).window_roc.(epoch_name).(factor_name)`
+-   **`epoch_name`**: `char` - The semantic epoch name (e.g., `'visual'`, `'delay'`, `'perisaccade'`, `'postreward'`).
+-   **`factor_name`**: `char` - The name of the factor comparison (e.g., `'reward'`, `'salience'`, `'identity'`, `'probability'`).
+
+#### Fields
+
+The field at this path is a `[1 x nSessions] struct array` with the following fields:
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `session_id` | `char` | The unique identifier for the session. |
+| `n_neurons` | `double` | The number of neurons from this session. |
+| `auc` | `[nNeurons x 1] double` | ROC AUC values for each neuron (0.5 = no discrimination). |
+| `p` | `[nNeurons x 1] double` | P-values from permutation test. |
+| `ci` | `[nNeurons x 2] double` | 95% confidence intervals [lower, upper] for AUC. |
+| `n_trials` | `[nNeurons x 2] double` | Trial counts [n_cond1, n_cond2] used for each neuron. |
+
+#### Epoch Definitions
+
+The epoch windows are defined in `define_task_conditions.m` and vary by brain area to account for different response latencies:
+
+| Epoch | Alignment Event | SC Window (ms) | SNc Window (ms) |
+| :--- | :--- | :--- | :--- |
+| visual | targetOn | [50, 250] | [100, 300] |
+| delay | fixOff | [-200, 0] | [-200, 0] |
+| perisaccade | saccadeOnset | [-50, 100] | [-50, 100] |
+| postreward | reward | [100, 400] | [100, 400] |
+
+#### Usage Notes
+
+This data structure is designed for:
+1. Scatter plots comparing factor selectivity across neurons (Hypothesis 2 testing)
+2. Proportion significant analyses per epoch
+3. Cross-factor correlation analyses
+
+---
+## 5. Neuron Metrics Table
+
+The neuron metrics table provides a per-neuron view of all key identifiers, metrics, and window-based ROC values in a single "tidy" table format. Each row represents one neuron from one session, enabling easy filtering, plotting, and statistical analysis.
+
+-   **Path:** `.(brain_area_data).neuron_metrics_table`
+
+#### Columns
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `session_id` | `cell (char)` | Unique session identifier (e.g., `'Feynman_08_12_2025_SNc'`). |
+| `cluster_id` | `double` | Cluster/unit ID within the session (from spike sorting). |
+| `brain_area` | `cell (char)` | Brain area: `'SC'` or `'SNc'`. |
+| `snc_subregion` | `cell (char)` | SNc subregion: `'rvmSNc'`, `'cdlSNc'`, or empty for SC. |
+| `is_selected` | `logical` | Whether neuron passed screening criteria (task-modulated for SC, putative DA for SNc). |
+| `baseline_fr` | `double` | Baseline firing rate in spikes/second. |
+| `waveform_duration` | `double` | Peak-to-trough waveform duration in milliseconds. |
+| `auc_{epoch}_{factor}` | `double` | ROC AUC value for the given epoch and factor comparison. Values range from 0 to 1, where 0.5 indicates no discrimination. |
+| `p_{epoch}_{factor}` | `double` | P-value from permutation test for the corresponding AUC. |
+
+#### Dynamic ROC Columns
+
+The table includes ROC columns for each combination of epoch and factor defined in the analysis plan:
+
+**Epochs:** `visual`, `delay`, `perisaccade`, `postreward`
+**Factors:** `reward`, `salience`, `identity`, `probability`
+
+This generates 16 AUC columns and 16 p-value columns:
+- `auc_visual_reward`, `p_visual_reward`
+- `auc_visual_salience`, `p_visual_salience`
+- `auc_visual_identity`, `p_visual_identity`
+- `auc_visual_probability`, `p_visual_probability`
+- `auc_delay_reward`, `p_delay_reward`
+- ... (and so on for all epoch × factor combinations)
+
+#### Usage Notes
+
+This table format is designed for:
+1. **Filtering**: Select only task-modulated neurons (`is_selected == true`)
+2. **SNc Subregion Analysis**: Compare ROC distributions between `rvmSNc` and `cdlSNc`
+3. **Scatter Plots**: Plot factor selectivity (e.g., `auc_visual_reward` vs `auc_visual_salience`)
+4. **Individual Neuron Identification**: Use `session_id + cluster_id` to cross-reference with per-neuron summary PDFs
+5. **Statistical Testing**: Test for significant differences between groups using p-value columns for filtering
+
+#### Example Usage (MATLAB)
+
+```matlab
+% Load aggregated data
+load('aggregated_analysis_data.mat');
+
+% Get SNc neuron metrics table
+nmt = aggregated_snc_data.neuron_metrics_table;
+
+% Filter for selected (putative DA) neurons only
+da_neurons = nmt(nmt.is_selected, :);
+
+% Compare reward selectivity between SNc subregions
+rvmSNc = da_neurons(strcmp(da_neurons.snc_subregion, 'rvmSNc'), :);
+cdlSNc = da_neurons(strcmp(da_neurons.snc_subregion, 'cdlSNc'), :);
+
+% Statistical comparison
+[p, h] = ranksum(rvmSNc.auc_visual_reward, cdlSNc.auc_visual_reward);
+```

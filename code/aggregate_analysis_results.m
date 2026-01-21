@@ -187,6 +187,11 @@ for area_cell = keys(aggregated_data_map)
         end
     end
 
+    % 5. Neuron Metrics Table (Task 7.2)
+    % Initialize an empty table that will be populated with per-neuron data
+    % including identifiers, metrics, and window-based ROC values
+    agg_data.neuron_metrics_table = table();
+
     aggregated_data_map(area) = agg_data;
 end
 giveFeed('Data structures initialized.');
@@ -456,6 +461,235 @@ for i = 1:nSessions
             end
         end
     end
+
+    % --- 5. Build Neuron Metrics Table (Task 7.2) ---
+    % Create per-neuron rows with identifiers, metrics, and ROC values
+    giveFeed(sprintf('  Building neuron metrics table for %s...', session_id));
+
+    % Get number of neurons in this session
+    n_session_neurons = n_neurons;
+
+    % Extract cluster IDs
+    if isfield(data.session_data, 'spikes') && ...
+            isfield(data.session_data.spikes, 'cluster_info') && ...
+            isfield(data.session_data.spikes.cluster_info, 'cluster_id')
+        cluster_ids = data.session_data.spikes.cluster_info.cluster_id;
+        if istable(cluster_ids)
+            cluster_ids = cluster_ids{:,1};
+        end
+    else
+        cluster_ids = (1:n_session_neurons)';
+    end
+
+    % Build identifier columns
+    session_id_col = repmat({session_id}, n_session_neurons, 1);
+    cluster_id_col = cluster_ids(1:n_session_neurons);
+    brain_area_col = repmat({brain_area}, n_session_neurons, 1);
+
+    % Get SNc subregion (empty for SC)
+    if isfield(data.session_data, 'metadata') && ...
+            isfield(data.session_data.metadata, 'snc_subregion')
+        snc_subregion = data.session_data.metadata.snc_subregion;
+        if isempty(snc_subregion) || strcmp(brain_area, 'SC')
+            snc_subregion_col = repmat({''}, n_session_neurons, 1);
+        else
+            snc_subregion_col = repmat({snc_subregion}, n_session_neurons, 1);
+        end
+    else
+        snc_subregion_col = repmat({''}, n_session_neurons, 1);
+    end
+
+    % Get neuron selection status (neuron_type: selected = true)
+    if isfield(analysis_results, 'selected_neurons')
+        is_selected = analysis_results.selected_neurons;
+        if length(is_selected) < n_session_neurons
+            is_selected = [is_selected; false(n_session_neurons - length(is_selected), 1)];
+        end
+    else
+        is_selected = false(n_session_neurons, 1);
+    end
+
+    % Get neuron_type from screening_info if available
+    % Categories for SC: 'classic', 'interneuron', 'excluded'
+    % Categories for SNc: 'modulated', 'excluded'
+    % The neuron_class field is populated by apply_neuron_screening
+    neuron_type_col = repmat({''}, n_session_neurons, 1);
+    if isfield(analysis_results, 'screening_info') && ...
+            ~isempty(analysis_results.screening_info)
+        screening_info = analysis_results.screening_info;
+        for i_neuron = 1:min(length(screening_info), n_session_neurons)
+            % Use neuron_class if available (SC-specific classification)
+            if isfield(screening_info(i_neuron), 'neuron_class') && ...
+                    ~isempty(screening_info(i_neuron).neuron_class)
+                neuron_type_col{i_neuron} = screening_info(i_neuron).neuron_class;
+            elseif screening_info(i_neuron).included
+                neuron_type_col{i_neuron} = 'modulated';
+            else
+                % Use exclusion_reason if available, otherwise generic 'excluded'
+                if isfield(screening_info(i_neuron), 'exclusion_reason') && ...
+                        ~isempty(screening_info(i_neuron).exclusion_reason)
+                    neuron_type_col{i_neuron} = ['excluded: ' screening_info(i_neuron).exclusion_reason];
+                else
+                    neuron_type_col{i_neuron} = 'excluded';
+                end
+            end
+        end
+    else
+        % Fallback: derive from is_selected
+        for i_neuron = 1:n_session_neurons
+            if is_selected(i_neuron)
+                neuron_type_col{i_neuron} = 'modulated';
+            else
+                neuron_type_col{i_neuron} = 'excluded';
+            end
+        end
+    end
+
+    % Extract additional screening metrics if available
+    screening_mean_fr = NaN(n_session_neurons, 1);
+    screening_sparsity = NaN(n_session_neurons, 1);
+    passes_fr_threshold = false(n_session_neurons, 1);
+    passes_sparsity_threshold = false(n_session_neurons, 1);
+    is_task_modulated = false(n_session_neurons, 1);
+
+    if isfield(analysis_results, 'screening_info') && ~isempty(analysis_results.screening_info)
+        screening_info = analysis_results.screening_info;
+        for i_neuron = 1:min(length(screening_info), n_session_neurons)
+            if isfield(screening_info(i_neuron), 'mean_firing_rate')
+                screening_mean_fr(i_neuron) = screening_info(i_neuron).mean_firing_rate;
+            end
+            if isfield(screening_info(i_neuron), 'proportion_empty_bins')
+                screening_sparsity(i_neuron) = screening_info(i_neuron).proportion_empty_bins;
+            end
+            if isfield(screening_info(i_neuron), 'passes_fr_threshold')
+                passes_fr_threshold(i_neuron) = screening_info(i_neuron).passes_fr_threshold;
+            end
+            if isfield(screening_info(i_neuron), 'passes_sparsity_threshold')
+                passes_sparsity_threshold(i_neuron) = screening_info(i_neuron).passes_sparsity_threshold;
+            end
+            if isfield(screening_info(i_neuron), 'is_modulated')
+                is_task_modulated(i_neuron) = screening_info(i_neuron).is_modulated;
+            end
+        end
+    end
+
+    % Get baseline firing rates
+    if isfield(data.session_data, 'metrics') && ...
+            isfield(data.session_data.metrics, 'baseline_frs')
+        baseline_frs = data.session_data.metrics.baseline_frs(:);
+        if length(baseline_frs) < n_session_neurons
+            baseline_frs = [baseline_frs; NaN(n_session_neurons - length(baseline_frs), 1)];
+        end
+    else
+        baseline_frs = NaN(n_session_neurons, 1);
+    end
+
+    % Get waveform durations (peak-to-trough)
+    if isfield(data.session_data, 'metrics') && ...
+            isfield(data.session_data.metrics, 'wf_metrics')
+        wf_metrics = data.session_data.metrics.wf_metrics;
+        if isstruct(wf_metrics)
+            wf_durations = [wf_metrics.peak_trough_ms]';
+        else
+            wf_durations = NaN(n_session_neurons, 1);
+        end
+        if length(wf_durations) < n_session_neurons
+            wf_durations = [wf_durations; NaN(n_session_neurons - length(wf_durations), 1)];
+        end
+    else
+        wf_durations = NaN(n_session_neurons, 1);
+    end
+
+    % Build initial table with identifiers and metrics
+    session_neuron_table = table(...
+        session_id_col, cluster_id_col, brain_area_col, snc_subregion_col, ...
+        neuron_type_col, is_selected, baseline_frs, wf_durations, ...
+        screening_mean_fr, screening_sparsity, ...
+        passes_fr_threshold, passes_sparsity_threshold, is_task_modulated, ...
+        'VariableNames', {'session_id', 'cluster_id', 'brain_area', ...
+            'snc_subregion', 'neuron_type', 'is_selected', 'baseline_fr', ...
+            'waveform_duration', 'screening_mean_fr', 'screening_sparsity', ...
+            'passes_fr_threshold', 'passes_sparsity_threshold', 'is_task_modulated'});
+
+    % Add window-based ROC columns for each epoch × factor combination
+    if isfield(analysis_results, 'window_roc')
+        wroc_epochs = fieldnames(analysis_results.window_roc);
+        for i_epoch = 1:length(wroc_epochs)
+            epoch_name = wroc_epochs{i_epoch};
+            if ~isstruct(analysis_results.window_roc.(epoch_name))
+                continue;
+            end
+            wroc_factors = fieldnames(analysis_results.window_roc.(epoch_name));
+            for i_factor = 1:length(wroc_factors)
+                factor_name = wroc_factors{i_factor};
+                wroc_data = analysis_results.window_roc.(epoch_name).(factor_name);
+
+                % Column names: auc_{epoch}_{factor}, p_{epoch}_{factor}
+                auc_col_name = sprintf('auc_%s_%s', epoch_name, factor_name);
+                p_col_name = sprintf('p_%s_%s', epoch_name, factor_name);
+
+                % Extract AUC and p-values
+                if isfield(wroc_data, 'auc') && ~isempty(wroc_data.auc)
+                    auc_vals = wroc_data.auc(:);
+                    if length(auc_vals) < n_session_neurons
+                        auc_vals = [auc_vals; NaN(n_session_neurons - length(auc_vals), 1)];
+                    end
+                else
+                    auc_vals = NaN(n_session_neurons, 1);
+                end
+
+                if isfield(wroc_data, 'p') && ~isempty(wroc_data.p)
+                    p_vals = wroc_data.p(:);
+                    if length(p_vals) < n_session_neurons
+                        p_vals = [p_vals; NaN(n_session_neurons - length(p_vals), 1)];
+                    end
+                else
+                    p_vals = NaN(n_session_neurons, 1);
+                end
+
+                % Add columns to table
+                session_neuron_table.(auc_col_name) = auc_vals;
+                session_neuron_table.(p_col_name) = p_vals;
+            end
+        end
+    end
+
+    % Append to aggregated neuron metrics table
+    if isempty(agg_data.neuron_metrics_table)
+        agg_data.neuron_metrics_table = session_neuron_table;
+    else
+        % Ensure tables have same columns before concatenating
+        existing_cols = agg_data.neuron_metrics_table.Properties.VariableNames;
+        new_cols = session_neuron_table.Properties.VariableNames;
+
+        % Add any missing columns to existing table
+        for col_cell = setdiff(new_cols, existing_cols)
+            col_name = col_cell{1};
+            n_existing = height(agg_data.neuron_metrics_table);
+            if isnumeric(session_neuron_table.(col_name))
+                agg_data.neuron_metrics_table.(col_name) = NaN(n_existing, 1);
+            else
+                agg_data.neuron_metrics_table.(col_name) = repmat({''}, n_existing, 1);
+            end
+        end
+
+        % Add any missing columns to new table
+        for col_cell = setdiff(existing_cols, new_cols)
+            col_name = col_cell{1};
+            if isnumeric(agg_data.neuron_metrics_table.(col_name))
+                session_neuron_table.(col_name) = NaN(n_session_neurons, 1);
+            else
+                session_neuron_table.(col_name) = repmat({''}, n_session_neurons, 1);
+            end
+        end
+
+        % Reorder columns to match
+        session_neuron_table = session_neuron_table(:, agg_data.neuron_metrics_table.Properties.VariableNames);
+
+        % Concatenate
+        agg_data.neuron_metrics_table = [agg_data.neuron_metrics_table; session_neuron_table];
+    end
+    giveFeed(sprintf('  Added %d neurons to metrics table.', n_session_neurons));
 
     % Update the map with the modified struct
     aggregated_data_map(brain_area) = agg_data;

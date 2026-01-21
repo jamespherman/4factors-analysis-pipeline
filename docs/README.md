@@ -1,6 +1,6 @@
 # Project Documentation
 
-This directory contains documentation relevant to the `tokens-analysis-pipeline`.
+This directory contains documentation relevant to the `4factors-analysis-pipeline`.
 
 ## /preprocessing_docs
 

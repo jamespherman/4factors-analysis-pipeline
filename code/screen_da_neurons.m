@@ -1,20 +1,31 @@
-function selected_neurons = screen_da_neurons(session_data, session_id, project_root)
+function selected_neurons = screen_da_neurons(session_data, session_id, project_root, condition_defs)
 % screen_da_neurons - Selects putative DA neurons based on electrophysiological properties.
 %
 % This function screens neurons based on their baseline firing rate and
 % waveform shape. It calls helper functions to calculate these metrics.
 %
 % INPUTS:
-%   session_data - A struct containing session-specific data, as loaded
-%                  from a *_session_data.mat file. See the data dictionary
-%                  for more info.
-%   session_id   - A string identifier for the session (e.g., 'M01_20230101').
-%   project_root - The root path of the project directory.
+%   session_data   - A struct containing session-specific data, as loaded
+%                    from a *_session_data.mat file. See the data dictionary
+%                    for more info.
+%   session_id     - A string identifier for the session (e.g., 'M01_20230101').
+%   project_root   - The root path of the project directory.
+%   condition_defs - (Optional) The analysis plan struct from define_task_conditions.
+%                    If condition_defs.neuron_inclusion.use_strict_screening is
+%                    false, all neurons are selected (bypassing screening criteria).
 %
 % OUTPUT:
 %   selected_neurons - A logical vector (nNeurons x 1) where true indicates
 %                      a putative DA neuron.
 %
+
+% Check if screening should be bypassed
+use_strict_screening = true; % Default to strict screening for backward compatibility
+if nargin >= 4 && ~isempty(condition_defs) && ...
+        isfield(condition_defs, 'neuron_inclusion') && ...
+        isfield(condition_defs.neuron_inclusion, 'use_strict_screening')
+    use_strict_screening = condition_defs.neuron_inclusion.use_strict_screening;
+end
 
 try
 fprintf('--> Screening DA neurons for session: %s\n', session_id);
@@ -24,6 +35,13 @@ nNeurons = height(session_data.spikes.cluster_info);
 if nNeurons == 0
     fprintf('WARNING: No neurons found (cluster_info is empty).\n');
     selected_neurons = false(0, 1);
+    return;
+end
+
+% If use_strict_screening is false, include all neurons
+if ~use_strict_screening
+    fprintf('... use_strict_screening=false, including all %d neurons.\n', nNeurons);
+    selected_neurons = true(nNeurons, 1);
     return;
 end
 

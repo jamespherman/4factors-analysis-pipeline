@@ -1,18 +1,28 @@
-% run_plotting_pipeline.m
+%% run_plotting_pipeline.m
 %
-% Description:
-%   This script is the main entry point for generating all final,
-%   aggregated figures. It loads aggregated data, then loops through each
-%   brain area ('SC', 'SNc') to generate a complete set of summary
-%   figures for each population.
+%   Main entry point for generating all aggregated summary figures.
 %
-% Author:
-%   Jules
+%   This script loads the aggregated analysis data and iterates through
+%   each brain area ('SC', 'SNc') to generate a complete set of
+%   publication-quality figures for each population.
 %
-% Date:
-%   2025-09-17
+%   Generated Figures:
+%     - ROC Comparison: Factor selectivity across task epochs
+%     - ANOVA: Main effects and interactions from n-way ANOVA
+%     - Baseline Comparison: Firing rate comparisons across conditions
+%     - Behavior: Behavioral performance summary
+%     - Decoding: Generalization analysis across task factors
+%     - Window ROC: Epoch-specific selectivity proportions and scatter plots
+%     - SNc Subregion: Grouped bar and violin plots comparing rvmSNc vs cdlSNc (SNc only)
+%
+%   Required Data:
+%     - data/processed/aggregated_analysis_data.mat
+%
+% Author: Jules
+% Date: 2025-09-17
+% Modified: 2026-01-19 - Added window ROC plotting
 
-% Start timer and provide user feedback
+%% Initialization
 tic;
 disp('Starting the plotting pipeline...');
 
@@ -23,18 +33,15 @@ project_root = fileparts(script_dir);
 aggFileName = fullfile(project_root, 'data', 'processed', ...
     'aggregated_analysis_data.mat');
 
-% Load analysis plan, which is needed for some plots.
+%% Load Required Data
 disp('Defining analysis plan...');
 [~, analysis_plan] = define_task_conditions();
 
-% Load aggregated data
 disp('Loading aggregated analysis data...');
 load(aggFileName);
 disp('Data loaded successfully.');
 
 %% Main Plotting Loop
-% This section iterates through each brain area and calls the relevant
-% plotting functions to generate a full set of figures for each area.
 brain_areas = {'SC', 'SNc'};
 all_data = {aggregated_sc_data, aggregated_snc_data};
 
@@ -44,24 +51,32 @@ for i = 1:length(brain_areas)
 
     fprintf('Generating plots for %s...\n', brain_area_name);
 
-    % Generate aggregated ROC comparison plot
+    % ROC comparison across task epochs
     plot_aggregated_roc_comparison(aggregated_data, brain_area_name);
 
-    % Generate aggregated ANOVA plot
+    % ANOVA main effects and interactions
     plot_aggregated_anova(aggregated_data, brain_area_name, analysis_plan);
 
-    % Generate aggregated baseline comparison plot
+    % Baseline firing rate comparisons
     plot_aggregated_baseline_comparison(aggregated_data, brain_area_name);
 
-    % Generate aggregated behavior plot
+    % Behavioral performance summary
     plot_aggregated_behavior(aggregated_data, brain_area_name, ...
         analysis_plan);
 
-    % In run_plotting_pipeline.m, inside the main for loop:
+    % Decoding generalization analysis
     plot_aggregated_decoding(aggregated_data, brain_area_name, ...
         analysis_plan, session_ids.(lower(brain_area_name)));
+
+    % Window-based ROC analysis (proportion significant and scatter plots)
+    plot_aggregated_window_roc(aggregated_data, brain_area_name);
+
+    % SNc subregion comparison (only for SNc data)
+    if strcmpi(brain_area_name, 'SNc')
+        plot_snc_subregion_comparison(aggregated_data, brain_area_name);
+    end
 end
 
-% End timer and provide user feedback
-toc;
-disp('Plotting pipeline finished.');
+%% Finish
+elapsed_time = toc;
+fprintf('Plotting pipeline finished in %.1f seconds.\n', elapsed_time);

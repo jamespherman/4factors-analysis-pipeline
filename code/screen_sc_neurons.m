@@ -1,30 +1,52 @@
-function [selected_neurons, sig_epoch_comparison, scSide] = screen_sc_neurons(session_data, project_root)
-% screen_sc_neurons - Implements an inclusive, multi-group method to identify
-% task-modulated SC neurons.
+function [selected_neurons, sig_epoch_comparison, scSide, neuron_class] = screen_sc_neurons(session_data, project_root, condition_defs)
+% screen_sc_neurons - Classifies SC neurons into Classic, Interneuron, or Excluded.
 %
-% This function refactors the neuron selection process to be more inclusive
-% and scientifically robust. It calculates firing rates for all memory-guided
-% saccade trials from both 'gSac_jph' and 'gSac_4factors' tasks at once.
-% It then determines the SC's recorded side hierarchically, preferring
-% 'gSac_jph' data. Finally, it tests each neuron for significant modulation
-% across multiple, distinct trial groups (all 'gSac_jph' trials, and
-% 'gSac_4factors' trials for each unique target location). A neuron is
-% selected if it shows significant modulation in ANY of these groups,
-% ensuring no task-relevant neurons are missed.
+% This function implements a three-tier classification system for SC neurons:
+%
+% CLASSIC SC NEURON (all must be true):
+%   (a) Significant increase in visual OR delay OR saccade epoch vs baseline
+%       for at least one contralateral location
+%   (b) Mean FR > 3.5 sp/s
+%   (c) NOT significantly activated at opposing locations (e.g., not both
+%       135 deg and 315 deg)
+%   (d) Not sparse (<=70% of 100ms bins empty across session)
+%
+% PUTATIVE INTERNEURON:
+%   - Mean FR > 3.5 sp/s
+%   - Task-modulated (some significant effect somewhere)
+%   - Fails to meet "classic" criteria (bilateral responses, suppression, etc.)
+%
+% EXCLUDED:
+%   - Mean FR <= 3.5 sp/s
+%   - Not task-modulated
+%   - Sparse (>70% of 100ms bins empty)
 %
 % INPUTS:
-%   session_data - A struct containing session-specific data, conforming to the
-%                  `session_data_dictionary.md`.
-%   project_root - The root path of the project directory.
+%   session_data   - A struct containing session-specific data, conforming to the
+%                    `session_data_dictionary.md`.
+%   project_root   - The root path of the project directory.
+%   condition_defs - (Optional) The analysis plan struct from define_task_conditions.
+%                    If condition_defs.neuron_inclusion.use_strict_screening is
+%                    false, all neurons are selected (bypassing screening criteria).
 %
 % OUTPUT:
-%   selected_neurons - A logical vector (nClusters x 1) where true indicates
-%                      a neuron that passed the selection criteria.
+%   selected_neurons     - A logical vector (nClusters x 1) where true indicates
+%                          a neuron classified as 'classic' or 'interneuron'.
 %   sig_epoch_comparison - A logical matrix (nClusters x 3) indicating
 %                          significant firing rate changes between epochs.
-%   scSide           - A string ('right' or 'left') indicating the determined
-%                      recorded SC side.
+%   scSide               - A string ('right' or 'left') indicating the determined
+%                          recorded SC side.
+%   neuron_class         - A cell array (nClusters x 1) with classification:
+%                          'classic', 'interneuron', or 'excluded'.
 %
+
+% Check if screening should be bypassed
+use_strict_screening = true; % Default to strict screening for backward compatibility
+if nargin >= 3 && ~isempty(condition_defs) && ...
+        isfield(condition_defs, 'neuron_inclusion') && ...
+        isfield(condition_defs.neuron_inclusion, 'use_strict_screening')
+    use_strict_screening = condition_defs.neuron_inclusion.use_strict_screening;
+end
 
 fprintf('screen_sc_neurons: Identifying task-modulated neurons...\n');
 
@@ -47,6 +69,11 @@ codes = initCodes();
 selected_neurons = false(nClusters, 1);
 sig_epoch_comparison = false(nClusters, 3);
 scSide = 'unknown';
+neuron_class = repmat({'excluded'}, nClusters, 1);
+
+% Classification thresholds
+MIN_FR_THRESHOLD = 3.5;  % sp/s - minimum mean firing rate
+MAX_SPARSE_FRACTION = 0.70;  % Maximum fraction of empty 100ms bins
 
 if nClusters == 0
     fprintf('WARNING in screen_sc_neurons: No clusters found.\n');
@@ -86,6 +113,52 @@ if isempty(all_memSac_trials)
 end
 
 nMemSacTrials = length(all_memSac_trials);
+
+% If use_strict_screening is false, include all neurons and skip detailed analysis
+if ~use_strict_screening
+    fprintf('screen_sc_neurons: use_strict_screening=false, including all %d neurons.\n', nClusters);
+    selected_neurons = true(nClusters, 1);
+    sig_epoch_comparison = false(nClusters, 3); % No significance testing performed
+    neuron_class = repmat({'classic'}, nClusters, 1); % Label all as classic when bypassing
+
+    % Determine scSide using the primary method (gSac_jph trials) only
+    if length(gSac_jph_memSac_trials) > 5
+        thetas_jph = trialInfo.targetTheta(gSac_jph_memSac_trials) / 10;
+        left_vf_trials = sum(thetas_jph > 90 & thetas_jph < 270);
+        right_vf_trials = sum(thetas_jph < 90 | thetas_jph > 270);
+        if left_vf_trials > right_vf_trials
+            scSide = 'right';
+        else
+            scSide = 'left';
+        end
+        fprintf('Determined SC Side: %s (from gSac_jph trials).\n', scSide);
+    else
+        % Fallback: use grid_hole from metadata if available
+        if isfield(session_data, 'metadata') && isfield(session_data.metadata, 'grid_hole')
+            grid_hole_str = session_data.metadata.grid_hole;
+            coords = sscanf(grid_hole_str, '(%f, %f)');
+            if ~isempty(coords)
+                if coords(1) < 0
+                    scSide = 'left';
+                elseif coords(1) > 0
+                    scSide = 'right';
+                else
+                    scSide = 'unknown';
+                end
+                fprintf('Determined SC Side: %s (from grid_hole metadata).\n', scSide);
+            else
+                scSide = 'unknown';
+                fprintf('Could not determine SC Side.\n');
+            end
+        else
+            scSide = 'unknown';
+            fprintf('Could not determine SC Side (no gSac_jph trials or metadata).\n');
+        end
+    end
+
+    fprintf('Finished screening (all neurons included). Found %d neurons.\n', nClusters);
+    return;
+end
 
 %% 3. Vectorized Firing Rate Calculation
 % Epoch definitions: {event_name, start_offset, end_offset, duration}
@@ -161,7 +234,50 @@ for i_cluster = 1:nClusters
     end
 end
 
-%% 4. Hierarchical scSide Determination
+%% 4. Calculate Session-Wide Metrics (Mean FR and Sparseness)
+% These metrics are needed for the three-tier classification system.
+
+% Determine session time range from all spike times
+session_start = min(all_spike_times);
+session_end = max(all_spike_times);
+session_duration = session_end - session_start;
+
+% Calculate mean FR and sparseness for each neuron
+mean_fr_session = nan(nClusters, 1);
+sparse_fraction = nan(nClusters, 1);
+
+% Create 100ms bins spanning the session
+bin_size = 0.1; % 100ms
+n_bins = ceil(session_duration / bin_size);
+bin_edges = session_start + (0:n_bins) * bin_size;
+
+for i_cluster = 1:nClusters
+    % Get all spike times for this cluster
+    spike_times = all_spike_times(all_spike_clusters == cluster_ids(i_cluster));
+
+    % Mean firing rate across the session
+    if session_duration > 0
+        mean_fr_session(i_cluster) = length(spike_times) / session_duration;
+    else
+        mean_fr_session(i_cluster) = 0;
+    end
+
+    % Sparseness: fraction of 100ms bins that are empty
+    if ~isempty(spike_times) && n_bins > 0
+        spike_counts = histcounts(spike_times, bin_edges);
+        empty_bins = sum(spike_counts == 0);
+        sparse_fraction(i_cluster) = empty_bins / n_bins;
+    else
+        sparse_fraction(i_cluster) = 1; % No spikes = 100% sparse
+    end
+end
+
+fprintf('Session-wide metrics calculated. Mean FR range: %.2f - %.2f sp/s\n', ...
+    min(mean_fr_session), max(mean_fr_session));
+fprintf('Sparseness range: %.1f%% - %.1f%% empty bins\n', ...
+    min(sparse_fraction)*100, max(sparse_fraction)*100);
+
+%% 5. Hierarchical scSide Determination (must run before classification)
 % Determine the recorded side of the SC. The primary method uses gSac_jph
 % trials, as the experimenter-placed targets are considered ground truth.
 % If insufficient gSac_jph trials exist, a fallback method uses
@@ -212,88 +328,109 @@ else
         'comparing population visual responses in gSac_4factors.\n'], scSide);
 end
 
-%% 5. Inclusive, Multi-Group Neuron Selection
-% Iterate through each neuron and test for significant modulation in any of
-% several distinct trial groups. A neuron is selected if it passes the
-% criteria for any single group.
+%% 6. Three-Tier Neuron Classification
+% Classify each neuron as 'classic', 'interneuron', or 'excluded' based on:
+%
+% CLASSIC SC NEURON (all must be true):
+%   (a) Significant increase vs baseline for >=1 contralateral location
+%   (b) Mean FR > 3.5 sp/s
+%   (c) NOT significantly activated at opposing locations (180 deg apart)
+%   (d) Not sparse (<=70% of 100ms bins empty)
+%
+% PUTATIVE INTERNEURON:
+%   - Mean FR > 3.5 sp/s
+%   - Task-modulated (some significant effect somewhere)
+%   - Fails to meet "classic" criteria
+%
+% EXCLUDED:
+%   - Mean FR <= 3.5 sp/s OR not task-modulated OR sparse
 
-% Define the trial groups for statistical testing.
-% Group 1: All valid gSac_jph memory-guided saccade trials.
-% Groups 2-N: gSac_4factors trials, grouped by each unique target location.
+% Define contralateral locations based on scSide
+% Right SC responds to left visual field: 90 < theta < 270
+% Left SC responds to right visual field: theta < 90 OR theta > 270
+if strcmp(scSide, 'right')
+    is_contralateral = @(theta_deg) theta_deg > 90 & theta_deg < 270;
+elseif strcmp(scSide, 'left')
+    is_contralateral = @(theta_deg) theta_deg < 90 | theta_deg > 270;
+else
+    % Unknown side - treat all locations as contralateral
+    is_contralateral = @(theta_deg) true(size(theta_deg));
+    fprintf('WARNING: scSide unknown, treating all locations as contralateral.\n');
+end
 
 % Find logical indices for each task within the combined trial array
 is_jph_trial = ismember(all_memSac_trials, gSac_jph_memSac_trials);
 is_4factors_trial = ismember(all_memSac_trials, gSac_4factors_memSac_trials);
 
-trial_groups = {};
-if any(is_jph_trial)
-    trial_groups{end+1} = is_jph_trial;
-end
-
-% Get the unique target locations for the 4factors task
-unique_locations_4factors = unique(trialInfo.targetTheta( ...
-    gSac_4factors_memSac_trials));
+% Get the unique target locations for the 4factors task (in degrees)
+unique_locations_4factors = unique(trialInfo.targetTheta(gSac_4factors_memSac_trials));
+unique_locations_deg = unique_locations_4factors / 10;
+n_locations = length(unique_locations_4factors);
 
 % Get target thetas for all combined trials
 thetas_all = trialInfo.targetTheta(all_memSac_trials);
 
-for i_loc = 1:length(unique_locations_4factors)
+% Build trial groups - one per unique location
+trial_groups = cell(1, n_locations);
+location_angles = nan(1, n_locations);
+for i_loc = 1:n_locations
     loc = unique_locations_4factors(i_loc);
-    % Create a mask for trials at this location, ONLY for 4factors trials
-    loc_mask = (thetas_all == loc) & is_4factors_trial;
-    if any(loc_mask)
-        trial_groups{end+1} = loc_mask;
-    end
+    trial_groups{i_loc} = (thetas_all == loc) & is_4factors_trial;
+    location_angles(i_loc) = loc / 10; % degrees
 end
 
-% Initialize data stores for summary figure
+% Also add gSac_jph trials as a separate group if available
+has_jph = any(is_jph_trial);
+if has_jph
+    trial_groups{end+1} = is_jph_trial;
+    % For jph trials, get the most common target angle
+    jph_thetas = trialInfo.targetTheta(gSac_jph_memSac_trials) / 10;
+    location_angles(end+1) = mode(jph_thetas);
+end
+
 n_groups = length(trial_groups);
+
+% Initialize storage for per-location significance results
+% sig_by_location: nClusters x n_groups x 3 (vis, delay, sac)
+sig_by_location = false(nClusters, n_groups, 3);
 group_mean_frs = cell(1, n_groups);
-group_sig_results = cell(1, n_groups);
 for i_group = 1:n_groups
     group_mean_frs{i_group} = nan(nClusters, nEpochs);
-    group_sig_results{i_group} = false(nClusters, 3);
 end
 
-% Main loop: iterate through each neuron
+% Test each neuron at each location
 for i_cluster = 1:nClusters
-    % Nested loop: iterate through each trial group
-    for i_group = 1:length(trial_groups)
-
+    for i_group = 1:n_groups
         trial_mask = trial_groups{i_group};
 
-
-        % Ensure there are enough trials in the group for statistical tests
         if sum(trial_mask) < 2
             continue;
         end
 
         % Extract firing rates for the current neuron and trial group
         neuron_frs_all_trials = squeeze(epoch_frs(i_cluster, :, trial_mask))';
-
-        % Remove trials with any NaN epochs
         neuron_frs = neuron_frs_all_trials(~any(isnan(neuron_frs_all_trials), 2), :);
 
         if size(neuron_frs, 1) < 2
-            continue; % Not enough valid trials for this neuron in this group
+            continue;
         end
 
-        is_significant_in_group = false(1, 3);
         mean_fr_this_group = mean(neuron_frs, 1, 'omitnan');
+        group_mean_frs{i_group}(i_cluster, :) = mean_fr_this_group;
 
         try
             [p_friedman, ~] = friedman(neuron_frs, 1, 'off');
             if p_friedman < 0.05
-                alpha_corr = 0.05 / 3; % Bonferroni for 3 comparisons
+                alpha_corr = 0.05 / 3;
                 comparisons = [1 2; 1 3; 1 4]; % Bsl vs Vis, Del, Sac
 
                 for i_comp = 1:size(comparisons, 1)
                     p = ranksum(neuron_frs(:, comparisons(i_comp, 1)), ...
                         neuron_frs(:, comparisons(i_comp, 2)));
-                    if p < alpha_corr && mean(neuron_frs(:, ...
-                            comparisons(i_comp, 2))) > mean(...
-                            neuron_frs(:, comparisons(i_comp, 1)))
-                        is_significant_in_group(i_comp) = true;
+                    % Significant INCREASE vs baseline
+                    if p < alpha_corr && mean(neuron_frs(:, comparisons(i_comp, 2))) > ...
+                            mean(neuron_frs(:, comparisons(i_comp, 1)))
+                        sig_by_location(i_cluster, i_group, i_comp) = true;
                     end
                 end
             end
@@ -301,26 +438,82 @@ for i_cluster = 1:nClusters
             fprintf('Stat test failed for cluster %d, group %d: %s\n', ...
                 cluster_ids(i_cluster), i_group, ME.message);
         end
+    end
+end
 
-        % Store the results for this group for later plotting
-        group_mean_frs{i_group}(i_cluster, :) = mean_fr_this_group;
-        group_sig_results{i_group}(i_cluster, :) = is_significant_in_group;
+% Now classify each neuron
+for i_cluster = 1:nClusters
+    % Check basic criteria
+    is_sparse = sparse_fraction(i_cluster) > MAX_SPARSE_FRACTION;
+    has_min_fr = mean_fr_session(i_cluster) > MIN_FR_THRESHOLD;
 
-        % If significant, update the master selection and sig results
-        if any(is_significant_in_group) && max(mean_fr_this_group) > 5
-            selected_neurons(i_cluster) = true;
+    % Determine if neuron is task-modulated at any location
+    is_task_modulated = any(sig_by_location(i_cluster, :, :), 'all');
 
-            % Store the significance profile from the first group that
-            % passes the test as the canonical result for the neuron.
-            if ~any(sig_epoch_comparison(i_cluster, :))
-                sig_epoch_comparison(i_cluster, :) = ...
-                    is_significant_in_group;
+    % Check for significant activation at contralateral locations
+    has_contralateral_activation = false;
+    activated_locations = []; % track which locations show activation
+
+    for i_group = 1:n_groups
+        if any(sig_by_location(i_cluster, i_group, :))
+            theta = location_angles(i_group);
+            activated_locations(end+1) = theta;
+            if is_contralateral(theta)
+                has_contralateral_activation = true;
             end
         end
-    end % end of group loop
-end % end of cluster loop
+    end
 
-% --- Generate new summary figure ---
+    % Check for opposing location activation (180 deg apart)
+    has_opposing_activation = false;
+    for i = 1:length(activated_locations)
+        for j = (i+1):length(activated_locations)
+            angle_diff = abs(activated_locations(i) - activated_locations(j));
+            % Check if locations are approximately 180 deg apart
+            if abs(angle_diff - 180) < 30 || abs(angle_diff - 180 + 360) < 30
+                has_opposing_activation = true;
+                break;
+            end
+        end
+        if has_opposing_activation; break; end
+    end
+
+    % Apply classification logic
+    if ~has_min_fr || is_sparse || ~is_task_modulated
+        % EXCLUDED: low FR, sparse, or not task-modulated
+        neuron_class{i_cluster} = 'excluded';
+        selected_neurons(i_cluster) = false;
+    elseif has_contralateral_activation && ~has_opposing_activation && ~is_sparse
+        % CLASSIC: all criteria met
+        neuron_class{i_cluster} = 'classic';
+        selected_neurons(i_cluster) = true;
+    else
+        % INTERNEURON: FR > threshold, task-modulated, but fails classic criteria
+        neuron_class{i_cluster} = 'interneuron';
+        selected_neurons(i_cluster) = true;
+    end
+
+    % Store canonical significance profile (from first significant location)
+    for i_group = 1:n_groups
+        if any(sig_by_location(i_cluster, i_group, :))
+            sig_epoch_comparison(i_cluster, :) = squeeze(sig_by_location(i_cluster, i_group, :))';
+            break;
+        end
+    end
+end
+
+% Count classifications
+n_classic = sum(strcmp(neuron_class, 'classic'));
+n_interneuron = sum(strcmp(neuron_class, 'interneuron'));
+n_excluded = sum(strcmp(neuron_class, 'excluded'));
+
+fprintf('\n=== SC Neuron Classification Results ===\n');
+fprintf('Classic SC neurons:    %d\n', n_classic);
+fprintf('Putative interneurons: %d\n', n_interneuron);
+fprintf('Excluded:              %d\n', n_excluded);
+fprintf('Total selected:        %d / %d\n', nnz(selected_neurons), nClusters);
+
+% --- Generate summary figure ---
 if n_groups > 0
     % Calculate global max firing rate for consistent color scaling
     global_max_fr = 0;
@@ -330,11 +523,10 @@ if n_groups > 0
             global_max_fr = max_in_group;
         end
     end
-    if global_max_fr == 0; global_max_fr = 1; end % Avoid Clim = [0 0]
+    if global_max_fr == 0; global_max_fr = 1; end
 
     fig = figure('Color', 'w', 'Position', [100, 100, 350 * n_groups, 700]);
 
-    % Define labels for plots
     fr_x_labels = {'Base', 'Vis', 'Delay', 'Sac'};
     sig_x_labels = {'Vis', 'Delay', 'Sac'};
 
@@ -353,18 +545,16 @@ if n_groups > 0
             set(gca, 'YTickLabel', []);
         end
 
-        % Generate title for the pair of plots
-        title_str = sprintf('Group %d', i_group);
-        if i_group == 1 && any(is_jph_trial)
-            title_str = 'gSac_jph';
+        % Generate title
+        theta = location_angles(i_group);
+        contra_str = '';
+        if is_contralateral(theta)
+            contra_str = ' (contra)';
+        end
+        if has_jph && i_group == n_groups
+            title_str = sprintf('gSac_jph: %d%s%s', theta, char(176), contra_str);
         else
-            % Find which location this is for 4factors
-            group_mask = trial_groups{i_group};
-            theta_for_group = unique(thetas_all(group_mask));
-            if ~isempty(theta_for_group)
-                title_str = sprintf('gSac_4factors: Theta %d', ...
-                    theta_for_group(1)/10);
-            end
+            title_str = sprintf('%d%s%s', theta, char(176), contra_str);
         end
         title(title_str);
 
@@ -372,22 +562,19 @@ if n_groups > 0
         plot_idx_sig = (i_group - 1) * 2 + 2;
         mySubPlot([1, n_groups * 2, plot_idx_sig], 'Width', 0.92, ...
             'LeftMargin', 0.05);
-        imagesc(group_sig_results{i_group});
+        imagesc(squeeze(sig_by_location(:, i_group, :)));
         colormap(gca, flipud(bone));
-        set(gca, 'XTick', 1:3, 'XTickLabel', sig_x_labels, ...
-            'YTickLabel', []);
+        set(gca, 'XTick', 1:3, 'XTickLabel', sig_x_labels, 'YTickLabel', []);
     end
 
     % Save the figure
     figFileName = fullfile(output_dir, [session_data.metadata.unique_id, ...
         '_sc_epoch_frs.pdf']);
     pdfSave(figFileName, fig.Position(3:4)/72, fig);
+    close(fig);
 end
 
-% close the figure window
-close(fig);
-
-fprintf('Finished screening. Found %d task-modulated SC neurons.\n', ...
-    nnz(selected_neurons));
+fprintf('Finished screening. Selected %d neurons (Classic: %d, Interneuron: %d).\n', ...
+    nnz(selected_neurons), n_classic, n_interneuron);
 
 end

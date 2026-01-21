@@ -28,10 +28,10 @@ clear; clc; close all;
 
 % --- USER TOGGLES ---
 force_rerun = struct(...
-    'screening', false, ...
+    'screening', true, ...   % Re-run to populate neuron_class
     'diag_pdfs', false, ...
-    'dataprep',  true, ...
-    'analyses',  true ...
+    'dataprep',  false, ...
+    'analyses',  false ...
 );
 % --- END USER TOGGLES ---
 
@@ -196,19 +196,27 @@ for i = 1:height(manifest)
     end
 
     % --- Dry run to calculate total number of steps for this session ---
+    % NEW ORDER: 1) Core Data Prep -> 2) Screening -> 3) PDFs -> 4) Analyses
     n_total_steps = 0;
     unique_id = session_id;
+
+    % Step 1: Core data preparation (must happen before screening)
+    if ~strcmp(manifest.dataprep_status{i}, 'complete') || ...
+            force_rerun.dataprep || force_rerun.screening
+        n_total_steps = n_total_steps + 1;
+    end
+
+    % Step 2: Neuron screening
     if ~strcmp(manifest.screening_status{i}, 'complete') || ...
             force_rerun.screening
         n_total_steps = n_total_steps + 1;
     end
+
+    % Step 3: Diagnostic PDFs (only when explicitly requested, not with screening)
     diag_output_dir_dry_run = fullfile(project_root, 'figures', unique_id);
     if (~exist(diag_output_dir_dry_run, 'dir') || ...
-            isempty(dir(fullfile(diag_output_dir_dry_run, '*.pdf'))))
-        n_total_steps = n_total_steps + 1;
-    end
-    if ~strcmp(manifest.dataprep_status{i}, 'complete') || ...
-            force_rerun.dataprep
+            isempty(dir(fullfile(diag_output_dir_dry_run, '*.pdf')))) || ...
+            force_rerun.diag_pdfs
         n_total_steps = n_total_steps + 1;
     end
 
@@ -370,90 +378,115 @@ for i = 1:height(manifest)
     step_counter = 0;
 
     % --- Pipeline Stages ---
-    % ... (screening, PDF gen, data prep stages are unchanged) ...
-        % --- 1. Neuron Screening ---
+    % NEW ORDER: 1) Core Data Prep (ALL neurons) -> 2) Screening -> 3) PDFs -> 4) Analyses
+
+    % --- 1. Core Data Preparation (for ALL neurons) ---
+    % This must happen BEFORE screening because screening needs binned spike
+    % data to compute task modulation.
+    session_data.metadata.unique_id = session_id;
+    nClusters = numel(session_data.spikes.cluster_info.cluster_id);
+    all_neurons_mask = true(nClusters, 1);  % Include ALL neurons for core_data
+
+    if ~strcmp(manifest.dataprep_status{i}, 'complete') || ...
+        force_rerun.dataprep || force_rerun.screening
+        step_counter = step_counter + 1;
+        fprintf(['\n--- Session %s: Starting Step %d of %d: ' ...
+            'Core Data Preparation (ALL neurons) ---\n'], unique_id, ...
+            step_counter, n_total_steps);
+        giveFeed('Running prepare_core_data for ALL neurons...');
+
+        % Prepare core_data for ALL neurons (needed for screening)
+        core_data = prepare_core_data(session_data, all_neurons_mask, ...
+            alignment_events, analysis_plan);
+        session_data.analysis.core_data = core_data;
+
+        data_updated = true;
+        manifest.dataprep_status{i} = 'complete';
+        giveFeed('Data prep complete.');
+    else
+        giveFeed('Data prep already complete. Loading core_data.');
+        core_data = session_data.analysis.core_data;
+    end
+
+    % --- 2. Neuron Screening (using refined criteria) ---
     if ~strcmp(manifest.screening_status{i}, 'complete') || ...
         force_rerun.screening
         step_counter = step_counter + 1;
         fprintf(['\n--- Session %s: Starting Step %d of %d: ' ...
             '        Neuron Screening ---\n'], unique_id, ...
             step_counter, n_total_steps);
-        giveFeed('Screening status is ''pending''. Running screening...');
+        giveFeed('Running refined neuron screening...');
 
-        session_data.metadata.unique_id = session_id;
-        if strcmp(session_data.metadata.brain_area, 'SNc')
-            selected_neurons = screen_da_neurons(session_data, ...
-                session_id, project_root, analysis_plan);
-        elseif strcmp(session_data.metadata.brain_area, 'SC')
-            [selected_neurons, sig_epoch_comp, scSide] = ...
-                screen_sc_neurons(session_data, project_root, analysis_plan);
+        % Apply the new unified screening function
+        % Pass project_root to enable SC-specific classification (neuron_class)
+        [selected_neurons, screening_info] = apply_neuron_screening(...
+            session_data, core_data, analysis_plan, project_root);
+
+        % Store results
+        session_data.analysis.selected_neurons = selected_neurons;
+        session_data.analysis.screening_info = screening_info;
+
+        % For SC sessions, still determine scSide for spatial analyses
+        if strcmp(session_data.metadata.brain_area, 'SC')
+            % Determine scSide from grid_hole metadata
+            grid_hole_str = session_data.metadata.grid_hole;
+            coords = sscanf(grid_hole_str, '(%f, %f)');
+            if ~isempty(coords)
+                if coords(1) < 0
+                    scSide = 'left';
+                elseif coords(1) > 0
+                    scSide = 'right';
+                else
+                    scSide = 'unknown';
+                end
+            else
+                scSide = 'unknown';
+            end
             session_data.analysis.scSide = scSide;
-            session_data.analysis.sig_epoch_comparison = sig_epoch_comp;
-        else
-            warning('run_4factors_analysis:unknownSessionType', ...
-                ['Unknown brain_area ''%s'' for session %s. Cannot ' ...
-                'screen neurons.'], ...
-                session_data.metadata.brain_area, session_id);
-            continue;
+            giveFeed(sprintf('SC Side determined: %s', scSide));
         end
 
-        session_data.analysis.selected_neurons = selected_neurons;
-
-        data_updated = true; % Mark data as updated
+        data_updated = true;
         manifest.screening_status{i} = 'complete';
         giveFeed('Screening complete.');
     else
         giveFeed('Screening already complete. Loading results.');
         selected_neurons = session_data.analysis.selected_neurons;
+        if isfield(session_data.analysis, 'screening_info')
+            screening_info = session_data.analysis.screening_info;
+        else
+            screening_info = [];
+        end
     end
 
-    % --- Per-Neuron Diagnostic PDF Generation ---
+    % --- 3. Per-Neuron Diagnostic PDF Generation (for ALL neurons) ---
     giveFeed('Checking for per-neuron diagnostic PDFs...');
     diag_output_dir = fullfile(project_root, 'figures', session_id);
 
     % Check if the directory exists and contains any PDF files
+    % Note: Diagnostic PDFs are only regenerated when explicitly requested,
+    % not automatically when screening is re-run
     if (~exist(diag_output_dir, 'dir') || isempty(dir(fullfile( ...
             diag_output_dir, '*.pdf')))) || force_rerun.diag_pdfs
         step_counter = step_counter + 1;
         fprintf(['\n--- Session %s: Starting Step %d of %d: ' ...
-            'Diagnostic PDF Generation ---\n'], unique_id, ...
+            'Diagnostic PDF Generation (ALL neurons) ---\n'], unique_id, ...
             step_counter, n_total_steps);
-        giveFeed('Generating diagnostic PDF...');
+        giveFeed('Generating diagnostic PDFs for ALL neurons...');
         if ~exist(diag_output_dir, 'dir')
             mkdir(diag_output_dir);
         end
-        generate_neuron_summary_pdf(session_data, selected_neurons, ...
-            session_id, diag_output_dir);
+        % Pass screening_info for detailed status headers
+        if exist('screening_info', 'var') && ~isempty(screening_info)
+            generate_neuron_summary_pdf(session_data, selected_neurons, ...
+                session_id, diag_output_dir, 'ScreeningInfo', screening_info);
+        else
+            generate_neuron_summary_pdf(session_data, selected_neurons, ...
+                session_id, diag_output_dir);
+        end
         giveFeed('Diagnostic PDF generation complete.');
     else
-        giveFeed('Diagnostic PDF already exists, skipping...');
-    end
-
-    % --- 2. Core Data Preparation ---
-    if ~strcmp(manifest.dataprep_status{i}, 'complete') || ...
-        force_rerun.dataprep
-        step_counter = step_counter + 1;
-        fprintf(['\n--- Session %s: Starting Step %d of %d: ' ...
-            'Core Data Preparation ---\n'], unique_id, ...
-            step_counter, n_total_steps);
-        giveFeed(['Data prep status is ''pending''. ' ...
-            '            Running prepare_core_data...']);
-
-        % --- Integration of Analysis Plan for Data Prep ---
-        % The 'alignment_events' variable, calculated dynamically from the
-        % analysis plan earlier in the script, is used here. This ensures
-        % that the data preparation is always aligned with the full scope
-        % of events required by all defined analyses.
-        core_data = prepare_core_data(session_data, selected_neurons, ...
-            alignment_events, analysis_plan);
-        session_data.analysis.core_data = core_data;
-
-        data_updated = true; % Mark data as updated
-        manifest.dataprep_status{i} = 'complete';
-        giveFeed('Data prep complete.');
-    else
-        giveFeed('Data prep already complete. Loading core_data.');
-        core_data = session_data.analysis.core_data;
+        giveFeed('Diagnostic PDFs already exist, skipping...');
     end
 
     % --- On-Demand Analysis Execution ---

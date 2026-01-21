@@ -5,6 +5,12 @@ function generate_neuron_summary_pdf(session_data, ...
 %   GENERATE_NEURON_SUMMARY_PDF(session_data, selected_neurons, unique_id,
 %   output_dir) generates a single-page PDF file for each neuron.
 %
+%   GENERATE_NEURON_SUMMARY_PDF(..., 'ScreeningInfo', screening_info)
+%   displays detailed inclusion/exclusion status with color-coded headers.
+%   When screening_info is provided, the header shows:
+%     - INCLUDED (green): Passes all three criteria
+%     - EXCLUDED: ... (red): Shows which criteria failed
+%
 %   Layout (3 independent column groups using viewport partitioning):
 %       Group 1 (x: 0.02-0.08): Waveform + ISI + Text info (stacked)
 %       Group 2 (x: 0.13-0.25): Spatial tuning (2 cols × 4 rows)
@@ -13,6 +19,16 @@ function generate_neuron_summary_pdf(session_data, ...
 %   Each PSTH panel has a raster plot above it. Factor sensitivity
 %   rasters/PSTHs use color-coded conditions (blue=High/Face,
 %   orange=Low/Non-face).
+%
+%   Spatial tuning PSTHs show colored markers at top indicating bins with
+%   significant deviation from baseline (green=above, purple=below).
+%
+%   ROC Summary Table (Task 9.2):
+%       When session_data.analysis.window_roc is available, a compact table
+%       showing window-based ROC AUC values is displayed at the bottom left.
+%       The table shows factor × epoch combinations with significance markers
+%       (* indicates p < 0.05). This enables quick verification of neuron
+%       factor selectivity against the aggregated scatter plots.
 %
 %   Output:
 %       PDF files named '{unique_id}_{cluster_id:03d}_summary.pdf'
@@ -24,8 +40,10 @@ addpath(fullfile(script_dir, 'utils'));
 %% Parse Optional Arguments
 p = inputParser;
 addParameter(p, 'ClusterIndex', [], @isnumeric);
+addParameter(p, 'ScreeningInfo', [], @(x) isempty(x) || isstruct(x));
 parse(p, varargin{:});
 cluster_index_to_process = p.Results.ClusterIndex;
+screening_info = p.Results.ScreeningInfo;
 
 %% Constants
 N_ROWS = 4;
@@ -41,6 +59,10 @@ colors_palette = richColors('matrix');
 COLOR_HIGH = colors_palette(6, :);   % Bright Blue [26, 133, 255]/255
 COLOR_LOW = colors_palette(12, :);   % Dark Orange [153, 79, 0]/255
 COLOR_BLACK = [0 0 0];
+
+% Significance marker colors
+COLOR_SIG_ABOVE = [0.2 0.7 0.2];   % Green for above baseline
+COLOR_SIG_BELOW = [0.5 0.2 0.7];   % Purple for below baseline
 
 % Layout parameters for the 3 column groups (viewport partitioning)
 % Group 1: Waveform/ISI/Text (single column)
@@ -65,6 +87,9 @@ G3_WIDTH_SPACING = 0.008;
 % X-tick labels for waveform plots
 xticklabels_wf = arrayfun(@num2str, round((0:20:80)./30, 2), ...
     'UniformOutput', false);
+
+% ROC table parameters
+ROC_SIG_THRESHOLD = 0.05;
 
 %% Setup and Data Extraction
 cluster_info = session_data.spikes.cluster_info;
@@ -127,12 +152,41 @@ for i_cluster = clusters_to_process
         figSize(1), figSize(2)]);
 
     %% --- Header ---
-    if numel(selected_neurons) >= i_cluster && selected_neurons(i_cluster)
-        screening_status = 'SELECTED';
-        status_color = [0.2 0.6 0.2];
+    % Determine status text and color based on screening_info (if available)
+    % or fall back to selected_neurons logical array
+    if ~isempty(screening_info) && numel(screening_info) >= i_cluster
+        info = screening_info(i_cluster);
+        if info.included
+            screening_status = 'INCLUDED';
+            status_color = [0.2 0.6 0.2];  % Green
+        else
+            % Use exclusion_reason directly (now formatted as readable string)
+            % e.g., "Low FR", "No mod.", "Sparse", "Low FR & No mod.", etc.
+            if ~isempty(info.exclusion_reason)
+                screening_status = sprintf('EXCLUDED: %s', info.exclusion_reason);
+            else
+                screening_status = 'EXCLUDED';
+            end
+            status_color = [0.6 0.2 0.2];  % Red
+        end
+
+        % Build modulation annotation string
+        if ~isempty(info.modulated_at)
+            mod_str = strjoin(info.modulated_at, ', ');
+            modulation_annotation = sprintf('Modulated: %s', mod_str);
+        else
+            modulation_annotation = 'Modulated: none';
+        end
     else
-        screening_status = 'NOT SELECTED';
-        status_color = [0.6 0.2 0.2];
+        % Fall back to legacy behavior using selected_neurons
+        if numel(selected_neurons) >= i_cluster && selected_neurons(i_cluster)
+            screening_status = 'INCLUDED';
+            status_color = [0.2 0.6 0.2];
+        else
+            screening_status = 'EXCLUDED';
+            status_color = [0.6 0.2 0.2];
+        end
+        modulation_annotation = '';
     end
 
     % Status indicator in top-right
@@ -142,6 +196,15 @@ for i_cluster = clusters_to_process
         'BackgroundColor', status_color, 'Color', 'w', ...
         'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle', ...
         'LineWidth', 1.5);
+
+    % Modulation annotation below status (if screening_info provided)
+    if ~isempty(modulation_annotation)
+        annotation('textbox', [0.70 0.96 0.14 0.03], ...
+            'String', modulation_annotation, ...
+            'FontSize', 7, 'FontWeight', 'normal', 'EdgeColor', 'none', ...
+            'BackgroundColor', 'none', 'Color', [0.3 0.3 0.3], ...
+            'HorizontalAlignment', 'right', 'VerticalAlignment', 'middle');
+    end
 
     %% --- Group 1: Waveform + ISI + Text Info ---
     opts_g1 = {'LeftMargin', G1_LEFT_MARGIN, 'Width', G1_WIDTH, ...
@@ -207,15 +270,149 @@ for i_cluster = clusters_to_process
     wf_duration = wf_metrics.peak_trough_ms;
     brain_area = session_data.metadata.brain_area;
 
-    info_str = sprintf(['%s\nCluster %d | %s\n' ...
-        'FR:%.1f Hz | WF:%.2f ms\nPhy:%s | n4F:%d'], ...
-        unique_id, cluster_id, brain_area, ...
-        baseline_fr, wf_duration, phy_quality, ...
-        length(fourfactors_trial_indices));
+    % Build info string - now includes screening metrics if available
+    if ~isempty(screening_info) && numel(screening_info) >= i_cluster
+        info = screening_info(i_cluster);
+
+        % Check/X marks for pass/fail
+        check = char(10003);  % Checkmark
+        cross = char(10007);  % X mark
+
+        % FR line
+        fr_mark = check;
+        if ~info.passes_fr_threshold
+            fr_mark = cross;
+        end
+        fr_line = sprintf('FR: %.1f Hz (thresh: %.1f) %s', ...
+            info.mean_firing_rate, info.fr_threshold, fr_mark);
+
+        % Sparsity line
+        sparse_mark = check;
+        if ~info.passes_sparsity_threshold
+            sparse_mark = cross;
+        end
+        sparse_line = sprintf('Sparsity: %.2f (thresh: %.2f) %s', ...
+            info.proportion_empty_bins, info.sparsity_threshold, sparse_mark);
+
+        % Modulated line
+        mod_mark = check;
+        if ~info.is_modulated
+            mod_mark = cross;
+        end
+        if info.is_modulated
+            mod_line = sprintf('Modulated: Yes %s', mod_mark);
+        else
+            mod_line = sprintf('Modulated: No %s', mod_mark);
+        end
+
+        % Active period line
+        if ~isnan(info.active_duration) && info.active_duration > 0
+            active_pct = 100 * info.active_duration / info.recording_duration;
+            active_line = sprintf('Active: %.0fs / %.0fs (%.0f%%)', ...
+                info.active_duration, info.recording_duration, active_pct);
+        else
+            active_line = 'Active: N/A';
+        end
+
+        info_str = sprintf(['%s\nCluster %d | %s\n' ...
+            'Phy:%s | n4F:%d\n' ...
+            '---\n' ...
+            '%s\n%s\n%s\n%s'], ...
+            unique_id, cluster_id, brain_area, ...
+            phy_quality, length(fourfactors_trial_indices), ...
+            fr_line, sparse_line, mod_line, active_line);
+    else
+        % Legacy info string without screening metrics
+        info_str = sprintf(['%s\nCluster %d | %s\n' ...
+            'FR:%.1f Hz | WF:%.2f ms\nPhy:%s | n4F:%d'], ...
+            unique_id, cluster_id, brain_area, ...
+            baseline_fr, wf_duration, phy_quality, ...
+            length(fourfactors_trial_indices));
+    end
 
     text(0.5, 0.5, info_str, 'Parent', ax_info, ...
         'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle', ...
-        'FontSize', 6, 'Interpreter', 'none');
+        'FontSize', 5, 'Interpreter', 'none');
+
+    %% --- ROC Summary Table (Task 9.2) ---
+    % Extract window ROC data for this neuron if available
+    if isfield(session_data, 'analysis') && ...
+            isfield(session_data.analysis, 'window_roc')
+        window_roc = session_data.analysis.window_roc;
+
+        % Define epoch and factor order for table
+        roc_epochs = {'visual', 'delay', 'perisaccade', 'postreward'};
+        roc_factors = {'reward', 'salience', 'probability', 'identity'};
+        roc_epoch_labels = {'Vis', 'Del', 'Sac', 'Rew'};
+        roc_factor_labels = {'Rew', 'Sal', 'Prob', 'Iden'};
+
+        % Build ROC table string
+        roc_table_lines = cell(length(roc_epochs) + 1, 1);
+
+        % Header row
+        header_str = sprintf('       %s  %s  %s  %s', ...
+            roc_factor_labels{1}, roc_factor_labels{2}, ...
+            roc_factor_labels{3}, roc_factor_labels{4});
+        roc_table_lines{1} = header_str;
+
+        % Data rows
+        for i_epoch = 1:length(roc_epochs)
+            epoch_name = roc_epochs{i_epoch};
+            row_str = sprintf('%s  ', roc_epoch_labels{i_epoch});
+
+            for i_factor = 1:length(roc_factors)
+                factor_name = roc_factors{i_factor};
+
+                % Get AUC and p-value for this neuron
+                auc_val = NaN;
+                p_val = NaN;
+
+                if isfield(window_roc, epoch_name) && ...
+                        isfield(window_roc.(epoch_name), factor_name)
+                    factor_data = window_roc.(epoch_name).(factor_name);
+                    if isfield(factor_data, 'auc') && ...
+                            length(factor_data.auc) >= i_cluster
+                        auc_val = factor_data.auc(i_cluster);
+                    end
+                    if isfield(factor_data, 'p') && ...
+                            length(factor_data.p) >= i_cluster
+                        p_val = factor_data.p(i_cluster);
+                    end
+                end
+
+                % Format cell with significance marker
+                if isnan(auc_val)
+                    cell_str = '  -  ';
+                elseif ~isnan(p_val) && p_val < ROC_SIG_THRESHOLD
+                    cell_str = sprintf('%.2f*', auc_val);
+                else
+                    cell_str = sprintf('%.2f ', auc_val);
+                end
+                row_str = [row_str cell_str];
+            end
+
+            roc_table_lines{i_epoch + 1} = row_str;
+        end
+
+        % Combine into single string
+        roc_table_str = strjoin(roc_table_lines, '\n');
+
+        % Create ROC table annotation below info box
+        % Position it in the gap between G1 and G2
+        roc_table_x = G1_LEFT_MARGIN;
+        roc_table_y = 0.01;  % Near bottom
+        roc_table_width = G2_LEFT_MARGIN - G1_LEFT_MARGIN;
+        roc_table_height = 0.055;
+
+        annotation('textbox', [roc_table_x, roc_table_y, ...
+            roc_table_width, roc_table_height], ...
+            'String', ['ROC AUC (* p<0.05)' char(10) roc_table_str], ...
+            'FontSize', 4, 'FontName', 'Courier', ...
+            'EdgeColor', [0.7 0.7 0.7], 'LineWidth', 0.5, ...
+            'BackgroundColor', [0.98 0.98 0.98], ...
+            'HorizontalAlignment', 'left', 'VerticalAlignment', 'top', ...
+            'Interpreter', 'none', 'Margin', 2);
+    end
 
     %% --- Precompute all PSTH and Raster data ---
     % Event times extraction
@@ -324,7 +521,8 @@ for i_cluster = clusters_to_process
             end
         end
     end
-    spatial_ylim = [0, spatial_ymax * 1.1 + 1];
+    % Add 15% headroom for significance markers
+    spatial_ylim = [0, spatial_ymax * 1.15 + 1];
 
     factor_ymax = 0;
     for i_factor = 1:4
@@ -339,6 +537,18 @@ for i_cluster = clusters_to_process
         end
     end
     factor_ylim = [0, factor_ymax * 1.1 + 1];
+
+    %% --- Extract bin significance data for this neuron ---
+    % Map events to significance data
+    event_to_sig = struct('targetOn', 'targetOn', 'saccadeOnset', 'saccadeOnset');
+    bin_sig_data = struct();
+
+    if ~isempty(screening_info) && numel(screening_info) >= i_cluster
+        info = screening_info(i_cluster);
+        if isfield(info, 'bin_significance') && ~isempty(info.bin_significance)
+            bin_sig_data = info.bin_significance;
+        end
+    end
 
     %% --- Group 2: Spatial Tuning (2 cols × 8 rows with rasters) ---
     % Using 8-row grid: odd rows for rasters, even rows for PSTHs
@@ -405,6 +615,49 @@ for i_cluster = clusters_to_process
                 xline(ax_psth, 0, 'k--', 'LineWidth', 0.5);
                 set(ax_psth, 'XLim', PSTH_WINDOW, 'YLim', spatial_ylim, ...
                     'TickDir', 'Out', 'Box', 'Off', 'FontSize', 6);
+
+                % --- Add colored bin markers for significant bins ---
+                event_name = events{i_ev};
+                loc_key = sprintf('loc%d', unique_locs(i_loc));
+
+                if isfield(bin_sig_data, event_name) && ...
+                        isfield(bin_sig_data.(event_name), loc_key)
+                    sig_data = bin_sig_data.(event_name).(loc_key);
+
+                    % Get time vector and significance arrays
+                    sig_time = sig_data.time_vector;
+                    sig_above = sig_data.above;
+                    sig_below = sig_data.below;
+
+                    % Calculate marker positions (in headroom region)
+                    data_ymax = spatial_ymax * 1.1 + 1;  % Where data ends
+                    marker_y_bottom = data_ymax * 0.92;
+                    marker_y_top = data_ymax * 0.98;
+                    marker_height = marker_y_top - marker_y_bottom;
+
+                    % Determine bin width from time vector
+                    if length(sig_time) > 1
+                        bin_width = sig_time(2) - sig_time(1);
+                    else
+                        bin_width = 0.025;
+                    end
+
+                    % Plot markers for significant bins
+                    for i_bin = 1:length(sig_time)
+                        bin_center = sig_time(i_bin);
+                        bin_left = bin_center - bin_width/2;
+
+                        if sig_above(i_bin)
+                            rectangle(ax_psth, 'Position', ...
+                                [bin_left, marker_y_bottom, bin_width, marker_height], ...
+                                'FaceColor', COLOR_SIG_ABOVE, 'EdgeColor', 'none');
+                        elseif sig_below(i_bin)
+                            rectangle(ax_psth, 'Position', ...
+                                [bin_left, marker_y_bottom, bin_width, marker_height], ...
+                                'FaceColor', COLOR_SIG_BELOW, 'EdgeColor', 'none');
+                        end
+                    end
+                end
 
                 % Title (top row only)
                 if i_loc == 1

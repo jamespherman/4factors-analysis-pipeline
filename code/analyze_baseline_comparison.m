@@ -139,7 +139,7 @@ for i_event = 1:numel(alignment_events)
         try
             [~, ~, ~, sig_vals(i_neuron, :)] = ...
                 arrayROC(neuron_baseline_data, ...
-                neuron_comp_data, 200);
+                neuron_comp_data, 500);
         catch ME
             % This can fail if one input has no variance.
             % Silently continue, leaving NaN.

@@ -84,3 +84,45 @@ This document defines the specifications for all final, publication-quality figu
 * **Axes:**
     * **X-Axis:** Standard Accuracy (within-condition/epoch).
     * **Y-Axis:** Generalization Accuracy (across-condition/epoch).
+
+---
+## 6. Aggregated Window ROC Plot
+
+* **Script:** `plot_aggregated_window_roc.m`
+* **Purpose:** To visualize epoch-based factor selectivity at the single-neuron level, supporting Hypothesis 2 testing (SNc subregion specialization).
+* **Figures Generated:** Two complementary figures.
+
+### 6.1 Figure 1: Proportion Significant Grid
+
+* **Layout:** A single figure with a multi-panel grid.
+    * **Rows:** Each factor defined in `analysis_plan.window_roc_plan.factors` (reward, salience, identity, probability).
+    * **Columns:** Each epoch defined in `analysis_plan.window_roc_plan.epoch_windows` (visual, delay, perisaccade, postreward).
+* **Plot Type:** Bidirectional bar plot.
+    * Positive Y-values represent the proportion of neurons with significant preference for condition 1 (high/face, AUC > 0.5).
+    * Negative Y-values represent the proportion of neurons with significant preference for condition 2 (low/non-face, AUC < 0.5).
+* **Data Requirements:** Requires a `window_roc` struct, nested as `.(epoch_name).(factor_name)`. Each element must contain `.auc` and `.p` arrays.
+* **Axes:**
+    * **X-Axis:** Single bar per subplot (no time dimension).
+    * **Y-Axis:** Proportion of Neurons.
+* **Formatting Conventions:**
+    * Column headers indicate epoch names.
+    * Row labels (leftmost column) indicate factor names.
+    * Y-axis labels and ticks only on leftmost column.
+    * All subplots in a row share the same Y-axis limits (centered at 0).
+
+### 6.2 Figure 2: ROC Scatter Plots
+
+* **Purpose:** Enable testing of Hypothesis 2 by comparing factor selectivity across individual neurons.
+* **Layout:** A multi-panel grid showing pairwise factor comparisons.
+    * Primary comparisons (cross-category): Reward vs Salience, Reward vs Identity, Probability vs Salience, Probability vs Identity
+    * Secondary comparisons (within-category): Reward vs Probability, Salience vs Identity
+* **Plot Type:** Scatter plot where each point represents one neuron.
+    * X-axis: AUC for factor A
+    * Y-axis: AUC for factor B
+    * Reference lines at 0.5 (chance level) on both axes
+    * Unity line for reference
+* **Data Requirements:** Same as Figure 1, using `.auc` values for the visual epoch (primary) or other epochs.
+* **Formatting Conventions:**
+    * Square aspect ratio for each subplot.
+    * Axis limits: [0, 1] for both axes.
+    * Neuron count displayed in subplot title.
