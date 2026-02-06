@@ -58,7 +58,12 @@ for i = 1:numel(metrics_plan.psth_aggregation.Events)
 end
 
 % time vector
-psth_time_vector = [];
+time_vectors_captured = false;
+psth_time_vectors = struct();
+for i = 1:numel(metrics_plan.psth_aggregation.Events)
+    event_name = metrics_plan.psth_aggregation.Events{i};
+    psth_time_vectors.(event_name) = [];
+end
 
 %% Main Aggregation Loop
 % Filter manifest for sessions with completed analysis.
@@ -91,11 +96,16 @@ for i = 1:height(complete_sessions)
     end
     s_data = session_data.session_data;
 
-    % If this is the first session, grab the time vector for the PSTHs.
-    if isempty(psth_time_vector)
-        first_event = metrics_plan.psth_aggregation.Events{1};
-        psth_time_vector = ...
-            s_data.analysis.core_data.spikes.(first_event).time_vector;
+    % Capture the event-specific time vectors from the first valid session
+    if ~time_vectors_captured && isfield(s_data, 'analysis') ...
+            && isfield(s_data.analysis, 'core_data')
+
+        for e = 1:numel(metrics_plan.psth_aggregation.Events)
+            event = metrics_plan.psth_aggregation.Events{e};
+            psth_time_vectors.(event) = ...
+                s_data.analysis.core_data.spikes.(event).time_vector;
+        end
+        time_vectors_captured = true; % Set flag so this doesn't run again
     end
 
     %% Aggregate Per-Neuron Metrics
@@ -179,6 +189,6 @@ output_path = fullfile(output_dir, 'aggregated_neuron_metrics.mat');
 % Save the aggregated data structures to the file.
 fprintf('Saving aggregated data to %s\n', output_path);
 save(output_path, 'sc_metrics', 'snc_metrics', ...
-    'psth_data', 'psth_time_vector', '-v7.3');
+    'psth_data', 'psth_time_vectors', '-v7.3');
 fprintf('Aggregation complete.\n');
 end
