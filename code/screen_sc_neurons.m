@@ -1,4 +1,8 @@
-function [selected_neurons, sig_epoch_comparison, scSide, neuron_class] = screen_sc_neurons(session_data, project_root, condition_defs)
+function [selected_neurons, sig_epoch_comparison, ...
+    scSide, neuron_class, session_data, ...
+    neuron_class_v2] = ...
+    screen_sc_neurons(session_data, project_root, ...
+    condition_defs, session_name)
 % screen_sc_neurons - Classifies SC neurons into Classic, Interneuron, or Excluded.
 %
 % This function implements a three-tier classification system for SC neurons:
@@ -6,20 +10,23 @@ function [selected_neurons, sig_epoch_comparison, scSide, neuron_class] = screen
 % CLASSIC SC NEURON (all must be true):
 %   (a) Significant increase in visual OR delay OR saccade epoch vs baseline
 %       for at least one contralateral location
-%   (b) Mean FR > 3.5 sp/s
-%   (c) NOT significantly activated at opposing locations (e.g., not both
-%       135 deg and 315 deg)
-%   (d) Not sparse (<=70% of 100ms bins empty across session)
+%   (b) Mean FR > 3.0 sp/s
+%   (c) NOT significantly activated at opposing locations (180 deg apart)
+%       during Visual OR Saccade epochs (delay activity is not considered)
+%   (d) NO significant suppression (decrease vs baseline) at contralateral locations
+%   (e) Not sparse (<=80% of 100ms bins empty across session)
 %
 % PUTATIVE INTERNEURON:
-%   - Mean FR > 3.5 sp/s
-%   - Task-modulated (some significant effect somewhere)
-%   - Fails to meet "classic" criteria (bilateral responses, suppression, etc.)
+%   - Mean FR > 3.0 sp/s
+%   - Task-modulated (activation or suppression somewhere)
+%   - Has EITHER:
+%     * Opposing activation (Visual/Saccade only, 180 deg apart), OR
+%     * Significant suppression at contralateral locations
 %
 % EXCLUDED:
-%   - Mean FR <= 3.5 sp/s
+%   - Mean FR <= 3.0 sp/s
 %   - Not task-modulated
-%   - Sparse (>70% of 100ms bins empty)
+%   - Sparse (>80% of 100ms bins empty)
 %
 % INPUTS:
 %   session_data   - A struct containing session-specific data, conforming to the
@@ -28,6 +35,7 @@ function [selected_neurons, sig_epoch_comparison, scSide, neuron_class] = screen
 %   condition_defs - (Optional) The analysis plan struct from define_task_conditions.
 %                    If condition_defs.neuron_inclusion.use_strict_screening is
 %                    false, all neurons are selected (bypassing screening criteria).
+%   session_name   - (Optional) Session identifier for figure filenames.
 %
 % OUTPUT:
 %   selected_neurons     - A logical vector (nClusters x 1) where true indicates
@@ -38,6 +46,11 @@ function [selected_neurons, sig_epoch_comparison, scSide, neuron_class] = screen
 %                          recorded SC side.
 %   neuron_class         - A cell array (nClusters x 1) with classification:
 %                          'classic', 'interneuron', or 'excluded'.
+%   session_data         - Updated session_data with cached_friedman_results
+%                          for faster subsequent runs.
+%   neuron_class_v2      - (Optional) Cell array (nClusters x 1) with
+%                          data-driven cluster labels from v2
+%                          classification. Empty if clustering not run.
 %
 
 % Check if screening should be bypassed
@@ -46,6 +59,15 @@ if nargin >= 3 && ~isempty(condition_defs) && ...
         isfield(condition_defs, 'neuron_inclusion') && ...
         isfield(condition_defs.neuron_inclusion, 'use_strict_screening')
     use_strict_screening = condition_defs.neuron_inclusion.use_strict_screening;
+end
+
+% Determine session_id for figure filenames
+if nargin >= 4 && ~isempty(session_name)
+    session_id = session_name;
+elseif isfield(session_data, 'metadata') && isfield(session_data.metadata, 'unique_id')
+    session_id = session_data.metadata.unique_id;
+else
+    session_id = 'unknown_session';
 end
 
 fprintf('screen_sc_neurons: Identifying task-modulated neurons...\n');
@@ -65,15 +87,31 @@ trialInfo = session_data.trialInfo;
 eventTimes = session_data.eventTimes;
 codes = initCodes();
 
+% --- Load Stability Info (for stable period calculations) ---
+% stability_info contains per-neuron stable recording periods identified by
+% detect_stable_trial_period.m. If available, we use it to calculate metrics
+% only over each neuron's stable period.
+use_stable_periods = false;
+stability_info = [];
+if isfield(session_data, 'stability_info') && ~isempty(session_data.stability_info)
+    stability_info = session_data.stability_info;
+    use_stable_periods = true;
+    fprintf('screen_sc_neurons: Using stability_info for per-neuron stable periods.\n');
+else
+    fprintf('screen_sc_neurons: No stability_info found, using full session for metrics.\n');
+end
+
 % Initialize outputs for early return
 selected_neurons = false(nClusters, 1);
 sig_epoch_comparison = false(nClusters, 3);
 scSide = 'unknown';
 neuron_class = repmat({'excluded'}, nClusters, 1);
+neuron_class_v2 = repmat({'excluded'}, ...
+    nClusters, 1);
 
 % Classification thresholds
-MIN_FR_THRESHOLD = 3.5;  % sp/s - minimum mean firing rate
-MAX_SPARSE_FRACTION = 0.70;  % Maximum fraction of empty 100ms bins
+MIN_FR_THRESHOLD = 3.0;  % sp/s - minimum mean firing rate (changed from 3.5)
+MAX_SPARSE_FRACTION = 0.80;  % Maximum fraction of empty 100ms bins (changed from 0.70)
 
 if nClusters == 0
     fprintf('WARNING in screen_sc_neurons: No clusters found.\n');
@@ -236,8 +274,10 @@ end
 
 %% 4. Calculate Session-Wide Metrics (Mean FR and Sparseness)
 % These metrics are needed for the three-tier classification system.
+% If stability_info is available, calculate metrics only over each neuron's
+% stable recording period. Otherwise, use the full session.
 
-% Determine session time range from all spike times
+% Determine full session time range (for fallback)
 session_start = min(all_spike_times);
 session_end = max(all_spike_times);
 session_duration = session_end - session_start;
@@ -245,26 +285,57 @@ session_duration = session_end - session_start;
 % Calculate mean FR and sparseness for each neuron
 mean_fr_session = nan(nClusters, 1);
 sparse_fraction = nan(nClusters, 1);
+bin_size = 0.1; % 100ms bins for sparseness calculation
 
-% Create 100ms bins spanning the session
-bin_size = 0.1; % 100ms
-n_bins = ceil(session_duration / bin_size);
-bin_edges = session_start + (0:n_bins) * bin_size;
-
+n_using_stable = 0;
 for i_cluster = 1:nClusters
     % Get all spike times for this cluster
     spike_times = all_spike_times(all_spike_clusters == cluster_ids(i_cluster));
 
-    % Mean firing rate across the session
-    if session_duration > 0
-        mean_fr_session(i_cluster) = length(spike_times) / session_duration;
+    % Determine time range for this neuron
+    % Use stable period if available, otherwise full session
+    if use_stable_periods && i_cluster <= length(stability_info) && ...
+            isfield(stability_info(i_cluster), 'is_stable') && ...
+            stability_info(i_cluster).is_stable
+        % Get stable trial range and convert to times
+        stable_trial_start = stability_info(i_cluster).stable_trial_start;
+        stable_trial_end = stability_info(i_cluster).stable_trial_end;
+
+        if ~isnan(stable_trial_start) && ~isnan(stable_trial_end) && ...
+                stable_trial_start >= 1 && stable_trial_end >= stable_trial_start && ...
+                stable_trial_end <= length(eventTimes.trialBegin)
+            % Convert trial indices to times
+            neuron_start = eventTimes.trialBegin(stable_trial_start);
+            neuron_end = eventTimes.trialEnd(stable_trial_end);
+            n_using_stable = n_using_stable + 1;
+        else
+            % Invalid stable period, use full session
+            neuron_start = session_start;
+            neuron_end = session_end;
+        end
+    else
+        % No stable period info, use full session
+        neuron_start = session_start;
+        neuron_end = session_end;
+    end
+
+    neuron_duration = neuron_end - neuron_start;
+
+    % Filter spike times to the neuron's active period
+    spike_times_filtered = spike_times(spike_times >= neuron_start & spike_times <= neuron_end);
+
+    % Mean firing rate across the neuron's active period
+    if neuron_duration > 0
+        mean_fr_session(i_cluster) = length(spike_times_filtered) / neuron_duration;
     else
         mean_fr_session(i_cluster) = 0;
     end
 
-    % Sparseness: fraction of 100ms bins that are empty
-    if ~isempty(spike_times) && n_bins > 0
-        spike_counts = histcounts(spike_times, bin_edges);
+    % Sparseness: fraction of 100ms bins that are empty within active period
+    if ~isempty(spike_times_filtered) && neuron_duration > 0
+        n_bins = ceil(neuron_duration / bin_size);
+        bin_edges = neuron_start + (0:n_bins) * bin_size;
+        spike_counts = histcounts(spike_times_filtered, bin_edges);
         empty_bins = sum(spike_counts == 0);
         sparse_fraction(i_cluster) = empty_bins / n_bins;
     else
@@ -272,8 +343,10 @@ for i_cluster = 1:nClusters
     end
 end
 
-fprintf('Session-wide metrics calculated. Mean FR range: %.2f - %.2f sp/s\n', ...
-    min(mean_fr_session), max(mean_fr_session));
+if use_stable_periods
+    fprintf('Metrics calculated using stable periods for %d/%d neurons.\n', n_using_stable, nClusters);
+end
+fprintf('Mean FR range: %.2f - %.2f sp/s\n', min(mean_fr_session), max(mean_fr_session));
 fprintf('Sparseness range: %.1f%% - %.1f%% empty bins\n', ...
     min(sparse_fraction)*100, max(sparse_fraction)*100);
 
@@ -333,17 +406,17 @@ end
 %
 % CLASSIC SC NEURON (all must be true):
 %   (a) Significant increase vs baseline for >=1 contralateral location
-%   (b) Mean FR > 3.5 sp/s
+%   (b) Mean FR > 3.0 sp/s
 %   (c) NOT significantly activated at opposing locations (180 deg apart)
-%   (d) Not sparse (<=70% of 100ms bins empty)
+%   (d) Not sparse (<=80% of 100ms bins empty)
 %
 % PUTATIVE INTERNEURON:
-%   - Mean FR > 3.5 sp/s
+%   - Mean FR > 3.0 sp/s
 %   - Task-modulated (some significant effect somewhere)
 %   - Fails to meet "classic" criteria
 %
 % EXCLUDED:
-%   - Mean FR <= 3.5 sp/s OR not task-modulated OR sparse
+%   - Mean FR <= 3.0 sp/s OR not task-modulated OR sparse
 
 % Define contralateral locations based on scSide
 % Right SC responds to left visual field: 90 < theta < 270
@@ -393,11 +466,33 @@ n_groups = length(trial_groups);
 % Initialize storage for per-location significance results
 % sig_by_location: nClusters x n_groups x 3 (vis, delay, sac)
 sig_by_location = false(nClusters, n_groups, 3);
+% suppression_by_location: tracks significant DECREASES vs baseline
+suppression_by_location = false(nClusters, n_groups, 3);
 group_mean_frs = cell(1, n_groups);
 for i_group = 1:n_groups
     group_mean_frs{i_group} = nan(nClusters, nEpochs);
 end
 
+%% Check for cached Friedman test results
+use_cached_friedman = false;
+if isfield(session_data, 'cached_friedman_results') && ...
+        ~isempty(session_data.cached_friedman_results)
+    cached = session_data.cached_friedman_results;
+    % Validate: same clusters, same order, same number of groups, and has suppression data
+    if isequal(cached.cluster_ids(:), cluster_ids(:)) && ...
+            size(cached.sig_by_location, 2) == n_groups && ...
+            isfield(cached, 'suppression_by_location')
+        use_cached_friedman = true;
+        fprintf('screen_sc_neurons: Using cached Friedman test results.\n');
+        sig_by_location = cached.sig_by_location;
+        suppression_by_location = cached.suppression_by_location;
+        group_mean_frs = cached.group_mean_frs;
+    else
+        fprintf('screen_sc_neurons: Cached Friedman results invalid (cluster/group mismatch or missing suppression data), recomputing...\n');
+    end
+end
+
+if ~use_cached_friedman
 % Test each neuron at each location
 for i_cluster = 1:nClusters
     for i_group = 1:n_groups
@@ -427,10 +522,17 @@ for i_cluster = 1:nClusters
                 for i_comp = 1:size(comparisons, 1)
                     p = ranksum(neuron_frs(:, comparisons(i_comp, 1)), ...
                         neuron_frs(:, comparisons(i_comp, 2)));
-                    % Significant INCREASE vs baseline
-                    if p < alpha_corr && mean(neuron_frs(:, comparisons(i_comp, 2))) > ...
-                            mean(neuron_frs(:, comparisons(i_comp, 1)))
-                        sig_by_location(i_cluster, i_group, i_comp) = true;
+                    epoch_mean = mean(neuron_frs(:, comparisons(i_comp, 2)));
+                    baseline_mean = mean(neuron_frs(:, comparisons(i_comp, 1)));
+
+                    if p < alpha_corr
+                        % Significant INCREASE vs baseline
+                        if epoch_mean > baseline_mean
+                            sig_by_location(i_cluster, i_group, i_comp) = true;
+                        % Significant DECREASE (suppression) vs baseline
+                        elseif epoch_mean < baseline_mean
+                            suppression_by_location(i_cluster, i_group, i_comp) = true;
+                        end
                     end
                 end
             end
@@ -441,34 +543,58 @@ for i_cluster = 1:nClusters
     end
 end
 
+    % Cache results in session_data for future runs
+    session_data.cached_friedman_results = struct(...
+        'cluster_ids', cluster_ids, ...
+        'sig_by_location', sig_by_location, ...
+        'suppression_by_location', suppression_by_location, ...
+        'group_mean_frs', {group_mean_frs}, ...
+        'location_angles', location_angles, ...
+        'epoch_frs', epoch_frs, ...
+        'computation_date', datestr(now));
+    fprintf('screen_sc_neurons: Friedman test results cached for future runs.\n');
+end  % end of if ~use_cached_friedman
+
 % Now classify each neuron
 for i_cluster = 1:nClusters
     % Check basic criteria
     is_sparse = sparse_fraction(i_cluster) > MAX_SPARSE_FRACTION;
     has_min_fr = mean_fr_session(i_cluster) > MIN_FR_THRESHOLD;
 
-    % Determine if neuron is task-modulated at any location
-    is_task_modulated = any(sig_by_location(i_cluster, :, :), 'all');
+    % Determine if neuron is task-modulated at any location (activation or suppression)
+    is_task_modulated = any(sig_by_location(i_cluster, :, :), 'all') || ...
+                        any(suppression_by_location(i_cluster, :, :), 'all');
 
     % Check for significant activation at contralateral locations
+    % Also track activated locations for opposing activation check
     has_contralateral_activation = false;
-    activated_locations = []; % track which locations show activation
+    activated_locations = []; % track which locations show ANY activation
+    activated_locations_vis_sac = []; % Only Visual (1) and Saccade (3) epochs
 
     for i_group = 1:n_groups
+        theta = location_angles(i_group);
+
+        % Check if this location has any activation (any epoch)
         if any(sig_by_location(i_cluster, i_group, :))
-            theta = location_angles(i_group);
             activated_locations(end+1) = theta;
             if is_contralateral(theta)
                 has_contralateral_activation = true;
             end
         end
+
+        % Track Visual (epoch 1) or Saccade (epoch 3) activation separately
+        % for opposing activation check (NOT delay epoch 2)
+        if sig_by_location(i_cluster, i_group, 1) || sig_by_location(i_cluster, i_group, 3)
+            activated_locations_vis_sac(end+1) = theta;
+        end
     end
 
     % Check for opposing location activation (180 deg apart)
+    % Only consider Visual and Saccade epochs (not Delay)
     has_opposing_activation = false;
-    for i = 1:length(activated_locations)
-        for j = (i+1):length(activated_locations)
-            angle_diff = abs(activated_locations(i) - activated_locations(j));
+    for i = 1:length(activated_locations_vis_sac)
+        for j = (i+1):length(activated_locations_vis_sac)
+            angle_diff = abs(activated_locations_vis_sac(i) - activated_locations_vis_sac(j));
             % Check if locations are approximately 180 deg apart
             if abs(angle_diff - 180) < 30 || abs(angle_diff - 180 + 360) < 30
                 has_opposing_activation = true;
@@ -478,17 +604,33 @@ for i_cluster = 1:nClusters
         if has_opposing_activation; break; end
     end
 
+    % Check for contralateral suppression (significant decrease at contralateral locations)
+    has_contralateral_suppression = false;
+    for i_group = 1:n_groups
+        if any(suppression_by_location(i_cluster, i_group, :))
+            theta = location_angles(i_group);
+            if is_contralateral(theta)
+                has_contralateral_suppression = true;
+                break;
+            end
+        end
+    end
+
     % Apply classification logic
+    % INTERNEURON criteria: opposing activation (vis/sac only) OR contralateral suppression
+    is_interneuron_pattern = has_opposing_activation || has_contralateral_suppression;
+
     if ~has_min_fr || is_sparse || ~is_task_modulated
         % EXCLUDED: low FR, sparse, or not task-modulated
         neuron_class{i_cluster} = 'excluded';
         selected_neurons(i_cluster) = false;
-    elseif has_contralateral_activation && ~has_opposing_activation && ~is_sparse
-        % CLASSIC: all criteria met
+    elseif has_contralateral_activation && ~is_interneuron_pattern && ~is_sparse
+        % CLASSIC: contralateral activation, no interneuron patterns, not sparse
         neuron_class{i_cluster} = 'classic';
         selected_neurons(i_cluster) = true;
     else
-        % INTERNEURON: FR > threshold, task-modulated, but fails classic criteria
+        % INTERNEURON: FR > threshold, task-modulated, but has interneuron patterns
+        % or lacks contralateral activation
         neuron_class{i_cluster} = 'interneuron';
         selected_neurons(i_cluster) = true;
     end
@@ -498,6 +640,42 @@ for i_cluster = 1:nClusters
         if any(sig_by_location(i_cluster, i_group, :))
             sig_epoch_comparison(i_cluster, :) = squeeze(sig_by_location(i_cluster, i_group, :))';
             break;
+        end
+    end
+end
+
+%% Apply Manual Classification Overrides
+% Some neurons are misclassified by the automated criteria due to edge cases
+% (e.g., weak but statistically significant ipsilateral responses triggering
+% opposing activation). These overrides are applied after visual inspection
+% of individual neuron summary PDFs.
+%
+% Format: {session_name, cluster_id, forced_class, reason}
+manual_overrides = {
+    'Newton_08_14_2025_SC', 6, 'classic', 'Weak ipsilateral responses falsely trigger opposing activation'
+};
+
+for i_override = 1:size(manual_overrides, 1)
+    override_session = manual_overrides{i_override, 1};
+    override_cluster = manual_overrides{i_override, 2};
+    override_class = manual_overrides{i_override, 3};
+    override_reason = manual_overrides{i_override, 4};
+
+    % Check if this override applies to current session
+    if strcmp(session_id, override_session)
+        % Find the cluster index
+        override_idx = find(cluster_ids == override_cluster);
+        if ~isempty(override_idx)
+            old_class = neuron_class{override_idx};
+            neuron_class{override_idx} = override_class;
+            % Update selected_neurons based on new class
+            if strcmp(override_class, 'classic') || strcmp(override_class, 'interneuron')
+                selected_neurons(override_idx) = true;
+            else
+                selected_neurons(override_idx) = false;
+            end
+            fprintf('MANUAL OVERRIDE: %s cluster %d: %s -> %s (%s)\n', ...
+                override_session, override_cluster, old_class, override_class, override_reason);
         end
     end
 end
@@ -568,13 +746,59 @@ if n_groups > 0
     end
 
     % Save the figure
-    figFileName = fullfile(output_dir, [session_data.metadata.unique_id, ...
-        '_sc_epoch_frs.pdf']);
+    figFileName = fullfile(output_dir, [session_id, '_sc_epoch_frs.pdf']);
     pdfSave(figFileName, fig.Position(3:4)/72, fig);
     close(fig);
 end
 
-fprintf('Finished screening. Selected %d neurons (Classic: %d, Interneuron: %d).\n', ...
+fprintf(['Finished screening. Selected %d neurons ' ...
+    '(Classic: %d, Interneuron: %d).\n'], ...
     nnz(selected_neurons), n_classic, n_interneuron);
+
+%% Data-Driven Classification (v2)
+% Extract features and cluster neurons that pass
+% quality gates. This runs alongside v1 and does NOT
+% affect v1 outputs (selected_neurons, neuron_class).
+if nargout >= 6
+    try
+        features = extract_sc_response_features( ...
+            session_data, scSide);
+        n_quality = sum(features.passes_quality);
+
+        if n_quality >= 30
+            clustering = cluster_sc_neurons( ...
+                features.feature_matrix( ...
+                    features.passes_quality, :), ...
+                features.feature_names, ...
+                features.cluster_ids( ...
+                    features.passes_quality));
+
+            % Map cluster assignments back
+            quality_idx = find( ...
+                features.passes_quality);
+            for i_q = 1:length(quality_idx)
+                neuron_class_v2{quality_idx(i_q)} ...
+                    = clustering.labels{ ...
+                    clustering.assignments(i_q)};
+            end
+
+            fprintf(['v2 classification: ' ...
+                '%d neurons in %d clusters.\n'], ...
+                n_quality, clustering.k);
+        else
+            % Too few neurons for clustering
+            fprintf(['v2 classification: only ' ...
+                '%d quality neurons (need 30). ' ...
+                'Falling back to v1.\n'], ...
+                n_quality);
+            neuron_class_v2 = neuron_class;
+        end
+    catch ME
+        warning(['v2 classification failed: ' ...
+            '%s. Using v1 fallback.'], ...
+            ME.message);
+        neuron_class_v2 = neuron_class;
+    end
+end
 
 end

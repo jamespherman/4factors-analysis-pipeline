@@ -1,4 +1,4 @@
-function [selected_neurons, screening_info, neuron_class] = screen_snc_neurons(session_data, core_data, condition_defs, project_root)
+function [selected_neurons, screening_info, neuron_class] = screen_snc_neurons(session_data, core_data, condition_defs, project_root, modulation_info)
 % screen_snc_neurons - Classifies SNc neurons into 'modulated' or 'excluded'.
 %
 % This function implements a two-tier classification system for SNc neurons:
@@ -9,7 +9,7 @@ function [selected_neurons, screening_info, neuron_class] = screen_snc_neurons(s
 %       fixation offset, peri-saccade, or reward delivery. Significance is
 %       determined by arrayROC bootstrap CI (95%) excluding 0.5.
 %   (b) Mean FR > 1 sp/s (computed over active period)
-%   (c) Not sparse (<=70% of 100ms bins empty across active period)
+%   (c) Not sparse (<=80% of 100ms bins empty across active period)
 %
 % EXCLUDED:
 %   - Any of the three criteria above is not met
@@ -19,6 +19,8 @@ function [selected_neurons, screening_info, neuron_class] = screen_snc_neurons(s
 %   core_data      - Binned spike data from prepare_core_data
 %   condition_defs - Analysis configuration from define_task_conditions
 %   project_root   - The root path of the project directory
+%   modulation_info - (Optional) Pre-computed task modulation results from
+%                     compute_task_modulation. If provided, skips recomputation.
 %
 % OUTPUT:
 %   selected_neurons - A logical vector (nClusters x 1) where true indicates
@@ -38,7 +40,7 @@ fprintf('screen_snc_neurons: Classifying SNc neurons...\n');
 neuron_inclusion = condition_defs.neuron_inclusion;
 use_strict_screening = neuron_inclusion.use_strict_screening;
 fr_threshold = neuron_inclusion.min_firing_rate_snc;  % 1 sp/s for SNc
-max_proportion_empty = neuron_inclusion.max_proportion_empty_bins;  % 0.7 (70%)
+max_proportion_empty = neuron_inclusion.max_proportion_empty_bins;  % 0.8 (80%)
 
 %% Get neuron information
 cluster_info = session_data.spikes.cluster_info;
@@ -156,9 +158,13 @@ fprintf('screen_snc_neurons: %d/%d neurons pass sparsity threshold (<=%.0f%% emp
     n_pass_sparsity, nNeurons, max_proportion_empty * 100);
 
 %% Criterion 2: Task Modulation (arrayROC-based with 3 consecutive significant bins)
-% Call compute_task_modulation which checks all events in modulation_windows:
+% Use pre-computed modulation_info if provided, otherwise compute it
 % fixOn, targetOn, fixOff, saccadeOnset, reward
-modulation_info = compute_task_modulation(session_data, core_data, condition_defs);
+if nargin >= 5 && ~isempty(modulation_info) && length(modulation_info) == nNeurons
+    fprintf('screen_snc_neurons: Using pre-computed modulation_info (skipping recomputation)\n');
+else
+    modulation_info = compute_task_modulation(session_data, core_data, condition_defs);
+end
 
 for i = 1:nNeurons
     screening_info(i).is_modulated = modulation_info(i).is_modulated;

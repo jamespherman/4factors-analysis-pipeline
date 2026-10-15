@@ -1,4 +1,4 @@
-function modulation_info = compute_task_modulation(session_data, core_data, condition_defs)
+function modulation_info = compute_task_modulation(session_data, core_data, condition_defs, stability_info)
 % COMPUTE_TASK_MODULATION Determine if neurons show task-related modulation.
 %
 %   modulation_info = COMPUTE_TASK_MODULATION(session_data, core_data, condition_defs)
@@ -35,6 +35,11 @@ function modulation_info = compute_task_modulation(session_data, core_data, cond
 
 fprintf('compute_task_modulation: Checking for task modulation...\n');
 
+% Handle optional stability_info argument for neuron present trials
+if nargin < 4
+    stability_info = [];
+end
+
 %% Extract configuration
 modulation_windows = condition_defs.modulation_windows;
 consecutive_bins_required = condition_defs.neuron_inclusion.consecutive_bins_required;
@@ -48,6 +53,16 @@ nNeurons = numel(cluster_ids);
 % Get trial conditions to filter by location
 [conditions, ~] = define_task_conditions(session_data);
 targetLocIdx = conditions.targetLocIdx;  % Location index (1-4) for each trial
+
+%% Compute neuron present trial masks if stability_info is provided
+use_stable_trials = false;
+neuron_trial_masks = [];
+if ~isempty(stability_info) && isfield(core_data, 'trial_indices')
+    neuron_trial_masks = get_neuron_present_trials(stability_info, ...
+        core_data.trial_indices, nNeurons);
+    use_stable_trials = true;
+    fprintf('compute_task_modulation: Using neuron present trials (stable periods)\n');
+end
 
 %% Events to check
 events_to_check = fieldnames(modulation_windows);
@@ -119,6 +134,12 @@ for i_neuron = 1:nNeurons
                 'below', false(1, length(time_vector)), ...
                 'time_vector', time_vector, ...
                 'test_window', test_window);
+
+            % Apply neuron-specific stable trial mask (if available)
+            if use_stable_trials && ~isempty(neuron_trial_masks)
+                stable_mask = neuron_trial_masks(i_neuron, :)';
+                loc_trials = loc_trials(stable_mask(loc_trials));
+            end
 
             if length(loc_trials) < 5
                 % Not enough trials at this location

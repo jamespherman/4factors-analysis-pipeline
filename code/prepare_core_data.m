@@ -42,6 +42,11 @@ core_data.spikes = prepare_neuronal_data(session_data, ...
     selected_neurons, fourfactors_trial_indices, ...
     alignment_events, analysis_plan);
 
+% Store trial indices for mapping between session-level and filtered trials
+% This enables downstream functions to map stability_info (session-level indices)
+% to core_data trials (filtered gSac_4factors trials)
+core_data.trial_indices = fourfactors_trial_indices;
+
 %% Prepare Pupil Data
 % This part is removed as per the refactoring plan.
 % core_data.pupil = prepare_pupil_data(session_data, ...

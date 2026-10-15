@@ -36,11 +36,16 @@
 % Date: 2026-01-17
 
 function preferred_locations = compute_preferred_locations(session_data, ...
-    core_data, conditions, condition_defs)
+    core_data, conditions, condition_defs, stability_info)
 
 %% Setup
 [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
 addpath(fullfile(script_dir, 'utils'));
+
+% Handle optional stability_info argument for neuron present trials
+if nargin < 5
+    stability_info = [];
+end
 
 % Get brain area for window selection
 brain_area = session_data.metadata.brain_area;
@@ -98,12 +103,42 @@ end
 % Average firing rate in visual window: [n_neurons × n_trials]
 visual_window_rates = mean(visual_rates(:, :, visual_bin_mask), 3, 'omitnan');
 
+% Compute neuron present trial masks if stability_info is provided
+use_stable_trials = false;
+neuron_trial_masks = [];
+n_trials = size(visual_window_rates, 2);
+if ~isempty(stability_info) && isfield(core_data, 'trial_indices')
+    neuron_trial_masks = get_neuron_present_trials(stability_info, ...
+        core_data.trial_indices, n_neurons);
+    use_stable_trials = true;
+    fprintf('compute_preferred_locations: Using neuron present trials (stable periods)\n');
+end
+
 % Compute mean response at each location (1-4)
+% Now computed per-neuron to account for stable trial periods
 location_responses_visual = NaN(n_neurons, 4);
-for loc = 1:4
-    loc_mask = (targetLocIdx == loc);
-    if sum(loc_mask) > 0
-        location_responses_visual(:, loc) = mean(visual_window_rates(:, loc_mask), 2, 'omitnan');
+visual_trial_counts = zeros(n_neurons, 4);  % Track trial counts
+
+for i_neuron = 1:n_neurons
+    neuron_rates = visual_window_rates(i_neuron, :);
+
+    % Get stable trial mask for this neuron
+    if use_stable_trials && ~isempty(neuron_trial_masks)
+        stable_mask = neuron_trial_masks(i_neuron, :);
+    else
+        stable_mask = true(1, n_trials);
+    end
+
+    for loc = 1:4
+        loc_mask = (targetLocIdx' == loc) & stable_mask;
+        % Also exclude NaN values
+        valid_mask = loc_mask & ~isnan(neuron_rates);
+        n_valid = sum(valid_mask);
+        visual_trial_counts(i_neuron, loc) = n_valid;
+
+        if n_valid > 0
+            location_responses_visual(i_neuron, loc) = mean(neuron_rates(valid_mask));
+        end
     end
 end
 
@@ -120,18 +155,39 @@ if isfield(core_data.spikes, saccade_event)
         saccade_window_rates = mean(saccade_rates(:, :, saccade_bin_mask), 3, 'omitnan');
 
         % Compute mean response at each location (1-4)
+        % Computed per-neuron to account for stable trial periods
         location_responses_saccade = NaN(n_neurons, 4);
-        for loc = 1:4
-            loc_mask = (targetLocIdx == loc);
-            if sum(loc_mask) > 0
-                location_responses_saccade(:, loc) = mean(saccade_window_rates(:, loc_mask), 2, 'omitnan');
+        saccade_trial_counts = zeros(n_neurons, 4);
+
+        for i_neuron = 1:n_neurons
+            neuron_rates = saccade_window_rates(i_neuron, :);
+
+            % Get stable trial mask for this neuron
+            if use_stable_trials && ~isempty(neuron_trial_masks)
+                stable_mask = neuron_trial_masks(i_neuron, :);
+            else
+                stable_mask = true(1, n_trials);
+            end
+
+            for loc = 1:4
+                loc_mask = (targetLocIdx' == loc) & stable_mask;
+                % Also exclude NaN values
+                valid_mask = loc_mask & ~isnan(neuron_rates);
+                n_valid = sum(valid_mask);
+                saccade_trial_counts(i_neuron, loc) = n_valid;
+
+                if n_valid > 0
+                    location_responses_saccade(i_neuron, loc) = mean(neuron_rates(valid_mask));
+                end
             end
         end
     else
         location_responses_saccade = NaN(n_neurons, 4);
+        saccade_trial_counts = zeros(n_neurons, 4);
     end
 else
     location_responses_saccade = NaN(n_neurons, 4);
+    saccade_trial_counts = zeros(n_neurons, 4);
 end
 
 %% Determine Preferred Locations
@@ -245,11 +301,16 @@ preferred_locations.method_used = method_used;
 preferred_locations.location_responses = location_responses_visual;
 preferred_locations.location_responses_saccade = location_responses_saccade;
 
+% Add trial counts (useful for assessing reliability of preferred location)
+preferred_locations.visual_trial_counts = visual_trial_counts;
+preferred_locations.saccade_trial_counts = saccade_trial_counts;
+
 % Add metadata about the computation
 preferred_locations.metadata = struct();
 preferred_locations.metadata.brain_area = brain_area;
 preferred_locations.metadata.visual_window = visual_window;
 preferred_locations.metadata.saccade_window = saccade_window;
 preferred_locations.metadata.differentiation_ratio = DIFFERENTIATION_RATIO;
+preferred_locations.metadata.use_stable_trials = use_stable_trials;
 
 end

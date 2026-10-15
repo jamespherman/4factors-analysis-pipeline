@@ -627,6 +627,8 @@ metrics_main(3).ci = ci_PV_main;
 
 x_base_main = 1:n_main_effects;
 
+yLims = [0.1, 0.3; 0 2; 500 600];
+
 %% Plot Each Row (Main Effects - Figure 3)
 for i_row = 1:3
     ax = mySubPlot([3, 1, i_row], 'LeftMargin', 0.125);
@@ -642,14 +644,15 @@ for i_row = 1:3
     for i_me = 1:n_main_effects
         if ~isnan(y_data(i_me))
             mybarerr(i_me, y_data(i_me), ...
-                [y_lo(i_me), y_hi(i_me)], [], main_effect_colors(i_me, :), bar_width_main);
+                [y_lo(i_me), y_hi(i_me)], [], ...
+                main_effect_colors(i_me, :), bar_width_main);
         end
     end
 
     % Formatting
     ylabel(metrics_main(i_row).name, 'FontSize', 11);
     set(ax, 'XTick', x_base_main, 'XTickLabel', main_effect_defs(:, 1), ...
-        'FontSize', 9, 'TickDir', 'Out');
+        'FontSize', 9, 'TickDir', 'Out', 'YLim', yLims(i_row, :));
     xlim([0.5, n_main_effects + 0.5]);
     if i_row < 3
         set(ax, 'XColor', 'none')
@@ -659,7 +662,8 @@ for i_row = 1:3
 end
 
 %% Save Main Effects Figure
-fig3_filename = fullfile(figures_dir, 'pooled_behavioral_summary_main_effects.pdf');
+fig3_filename = fullfile(figures_dir, ...
+    'pooled_behavioral_summary_main_effects.pdf');
 pdfSave(fig3_filename, fig3.Position(3:4)/72, fig3);
 fprintf('\nMain effects figure saved to: %s\n', fig3_filename);
 

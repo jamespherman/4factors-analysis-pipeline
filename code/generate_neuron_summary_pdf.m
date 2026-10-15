@@ -41,9 +41,15 @@ addpath(fullfile(script_dir, 'utils'));
 p = inputParser;
 addParameter(p, 'ClusterIndex', [], @isnumeric);
 addParameter(p, 'ScreeningInfo', [], @(x) isempty(x) || isstruct(x));
+addParameter(p, 'KilosortDir', '', @(x) ischar(x) || isstring(x));
 parse(p, varargin{:});
 cluster_index_to_process = p.Results.ClusterIndex;
 screening_info = p.Results.ScreeningInfo;
+kilosort_dir = char(p.Results.KilosortDir);
+if isempty(kilosort_dir)
+    kilosort_dir = fullfile(findOneDrive, 'Neuronal Data Analysis', ...
+        unique_id);
+end
 
 %% Constants
 N_ROWS = 4;
@@ -108,6 +114,32 @@ fourfactors_master_mask = session_data.trialInfo.taskCode == ...
     fourfactors_task_code & ~cellfun(@isempty, ...
     session_data.eventTimes.rewardCell);
 fourfactors_trial_indices = find(fourfactors_master_mask);
+
+%% Recording Stability Data
+% Kilosort per-spike amplitudes and depths (same order as
+% session_data.spikes.times) for the amplitude/depth-over-time panels.
+spike_amps = [];
+spike_depths = [];
+amp_file = fullfile(kilosort_dir, 'amplitudes.npy');
+pos_file = fullfile(kilosort_dir, 'spike_positions.npy');
+if exist(amp_file, 'file') && exist(pos_file, 'file')
+    spike_amps = readNPY(amp_file);
+    spike_pos = readNPY(pos_file);
+    if numel(spike_amps) == numel(all_spike_times) && ...
+            size(spike_pos, 1) == numel(all_spike_times)
+        spike_depths = spike_pos(:, 2);
+    else
+        warning(['generate_neuron_summary_pdf: Kilosort arrays do ' ...
+            'not match spike count; skipping stability panels.']);
+        spike_amps = [];
+    end
+    clear spike_pos
+end
+
+% Time span of the gSac_4factors block (successful trials)
+block_4f = [min(session_data.eventTimes.trialBegin( ...
+    fourfactors_trial_indices)), max(session_data.eventTimes.trialEnd( ...
+    fourfactors_trial_indices))];
 
 %% Get target locations from 4factors trials
 targetLocIdx_all = session_data.trialInfo.targetLocIdx;
@@ -233,6 +265,62 @@ for i_cluster = clusters_to_process
         axis(ax_wf, 'off');
     end
 
+    % Recording stability: amplitude and depth over time (rows 11-12 of
+    % 16). Shading marks the gSac_4factors block; the green bar marks
+    % the neuron's stable period.
+    is_cluster = all_spike_clusters == cluster_id;
+    stable_span = [NaN NaN];
+    if isfield(session_data, 'stability_info') && ...
+            numel(session_data.stability_info) >= i_cluster && ...
+            session_data.stability_info(i_cluster).is_stable
+        si_c = session_data.stability_info(i_cluster);
+        stable_span = [session_data.eventTimes.trialBegin( ...
+            si_c.stable_trial_start), session_data.eventTimes.trialEnd( ...
+            si_c.stable_trial_end)];
+    end
+    stab_vals = {spike_amps, spike_depths};
+    stab_labels = {'Amp.', 'Depth'};
+    for i_stab = 1:2
+        ax_stab = mySubPlot([16, 1, 10 + i_stab], opts_g1{:});
+        vals = stab_vals{i_stab};
+        if isempty(vals) || ~any(is_cluster)
+            axis(ax_stab, 'off');
+            continue;
+        end
+        t_min = all_spike_times(is_cluster) / 60;
+        v = double(vals(is_cluster));
+
+        % Subsample for plotting
+        if numel(t_min) > 3000
+            keep = round(linspace(1, numel(t_min), 3000));
+            t_min = t_min(keep);
+            v = v(keep);
+        end
+        hold(ax_stab, 'on');
+        y_lim = [min(v), max(v)] + [-0.05 0.05] * max(range(v), eps);
+        patch(ax_stab, block_4f([1 2 2 1]) / 60, ...
+            y_lim([1 1 2 2]), [0.85 0.85 0.85], 'EdgeColor', 'none');
+        plot(ax_stab, t_min, v, '.', 'Color', COLOR_BLACK, ...
+            'MarkerSize', 1);
+        if all(~isnan(stable_span))
+            plot(ax_stab, stable_span / 60, y_lim([2 2]), '-', ...
+                'Color', COLOR_SIG_ABOVE, 'LineWidth', 2);
+        end
+        set(ax_stab, 'YLim', y_lim, 'XLim', [0, ...
+            max(all_spike_times) / 60], 'FontSize', 5, 'TickDir', 'Out');
+        ylabel(ax_stab, stab_labels{i_stab}, 'FontSize', 5);
+        if i_stab == 1
+            set(ax_stab, 'XTickLabel', []);
+            title(ax_stab, 'Stability vs. time (min); gray = 4F', ...
+                'FontSize', 5);
+        end
+    end
+
+    % Firing rate within the gSac_4factors block
+    n_spikes_4f = sum(spike_times >= block_4f(1) & ...
+        spike_times <= block_4f(2));
+    fr_4f = n_spikes_4f / diff(block_4f);
+
     % ISI histogram: 1/8 of column height at row 7 of 8
     ax_isi = mySubPlot([8, 1, 7], opts_g1{:});
     if numel(spike_times) > 1
@@ -314,13 +402,21 @@ for i_cluster = clusters_to_process
             active_line = 'Active: N/A';
         end
 
+        % gSac_4factors block FR and stable-period coverage
+        if isfield(info, 'stability_coverage')
+            stab_line = sprintf('4F FR: %.1f Hz | Stable: %.0f%%', ...
+                fr_4f, 100 * info.stability_coverage);
+        else
+            stab_line = sprintf('4F FR: %.1f Hz', fr_4f);
+        end
+
         info_str = sprintf(['%s\nCluster %d | %s\n' ...
             'Phy:%s | n4F:%d\n' ...
             '---\n' ...
-            '%s\n%s\n%s\n%s'], ...
+            '%s\n%s\n%s\n%s\n%s'], ...
             unique_id, cluster_id, brain_area, ...
             phy_quality, length(fourfactors_trial_indices), ...
-            fr_line, sparse_line, mod_line, active_line);
+            fr_line, sparse_line, mod_line, active_line, stab_line);
     else
         % Legacy info string without screening metrics
         info_str = sprintf(['%s\nCluster %d | %s\n' ...
@@ -587,20 +683,12 @@ for i_cluster = clusters_to_process
                 % Plot raster (all trials in black)
                 hold(ax_raster, 'on');
                 loc_trials = find(d.loc_mask);
-                for i_t = 1:length(loc_trials)
-                    trial_idx = loc_trials(i_t);
-                    aligned_spikes = spike_times - ...
-                        event_times_all{i_ev}(trial_idx);
-                    spikes_in_window = aligned_spikes(...
-                        aligned_spikes >= PSTH_WINDOW(1) & ...
-                        aligned_spikes <= PSTH_WINDOW(2));
-                    if ~isempty(spikes_in_window)
-                        plot(ax_raster, spikes_in_window, ...
-                            i_t * ones(size(spikes_in_window)), ...
-                            '.', 'Color', COLOR_BLACK, 'MarkerSize', 1);
-                    end
-                end
-                xline(ax_raster, 0, 'k--', 'LineWidth', 0.5);
+                [rx, ry] = raster_points(spike_times, ...
+                    event_times_all{i_ev}(loc_trials), PSTH_WINDOW, 0);
+                plot(ax_raster, rx, ry, '.', 'Color', COLOR_BLACK, ...
+                    'MarkerSize', 1);
+                line(ax_raster, [0 0], [0, length(loc_trials) + 1], 'Color', 'k', ...
+                    'LineStyle', '--', 'LineWidth', 0.5);
                 set(ax_raster, 'XLim', PSTH_WINDOW, ...
                     'YLim', [0 length(loc_trials)+1], ...
                     'XTickLabel', [], 'YTick', [], ...
@@ -612,7 +700,8 @@ for i_cluster = clusters_to_process
                     zeros(size(d.rate)), d.rate);
                 delete(hBS(1:2));
                 set(hBS(3), 'Color', COLOR_BLACK, 'LineWidth', 1);
-                xline(ax_psth, 0, 'k--', 'LineWidth', 0.5);
+                line(ax_psth, [0 0], spatial_ylim, 'Color', 'k', ...
+                    'LineStyle', '--', 'LineWidth', 0.5);
                 set(ax_psth, 'XLim', PSTH_WINDOW, 'YLim', spatial_ylim, ...
                     'TickDir', 'Out', 'Box', 'Off', 'FontSize', 6);
 
@@ -744,42 +833,26 @@ for i_cluster = clusters_to_process
                     cond2_trials = find(d.cond2_mask);
 
                     % Plot condition 1 trials (High/Face) - blue
-                    y_offset = 0;
-                    for i_t = 1:length(cond1_trials)
-                        trial_idx = cond1_trials(i_t);
-                        aligned_spikes = spike_times - ...
-                            event_times_all{i_ev}(trial_idx);
-                        spikes_in_window = aligned_spikes(...
-                            aligned_spikes >= PSTH_WINDOW(1) & ...
-                            aligned_spikes <= PSTH_WINDOW(2));
-                        if ~isempty(spikes_in_window)
-                            plot(ax_raster, spikes_in_window, ...
-                                (y_offset + i_t) * ones(size(spikes_in_window)), ...
-                                '.', 'Color', COLOR_HIGH, 'MarkerSize', 1);
-                        end
-                    end
+                    [rx, ry] = raster_points(spike_times, ...
+                        event_times_all{i_ev}(cond1_trials), ...
+                        PSTH_WINDOW, 0);
+                    plot(ax_raster, rx, ry, '.', 'Color', COLOR_HIGH, ...
+                        'MarkerSize', 1);
 
                     % Small gap between condition groups
                     gap_size = 2;
                     y_offset = length(cond1_trials) + gap_size;
 
                     % Plot condition 2 trials (Low/Non-face) - orange
-                    for i_t = 1:length(cond2_trials)
-                        trial_idx = cond2_trials(i_t);
-                        aligned_spikes = spike_times - ...
-                            event_times_all{i_ev}(trial_idx);
-                        spikes_in_window = aligned_spikes(...
-                            aligned_spikes >= PSTH_WINDOW(1) & ...
-                            aligned_spikes <= PSTH_WINDOW(2));
-                        if ~isempty(spikes_in_window)
-                            plot(ax_raster, spikes_in_window, ...
-                                (y_offset + i_t) * ones(size(spikes_in_window)), ...
-                                '.', 'Color', COLOR_LOW, 'MarkerSize', 1);
-                        end
-                    end
+                    [rx, ry] = raster_points(spike_times, ...
+                        event_times_all{i_ev}(cond2_trials), ...
+                        PSTH_WINDOW, y_offset);
+                    plot(ax_raster, rx, ry, '.', 'Color', COLOR_LOW, ...
+                        'MarkerSize', 1);
 
                     total_trials = length(cond1_trials) + gap_size + length(cond2_trials);
-                    xline(ax_raster, 0, 'k--', 'LineWidth', 0.5);
+                    line(ax_raster, [0 0], [0, total_trials + 1], 'Color', 'k', ...
+                        'LineStyle', '--', 'LineWidth', 0.5);
                     set(ax_raster, 'XLim', PSTH_WINDOW, ...
                         'YLim', [0 total_trials + 1], ...
                         'XTickLabel', [], 'YTick', [], ...
@@ -798,7 +871,8 @@ for i_cluster = clusters_to_process
                     delete(hBS2(1:2));
                     set(hBS2(3), 'Color', COLOR_LOW, 'LineWidth', 1);
 
-                    xline(ax_psth, 0, 'k--', 'LineWidth', 0.5);
+                    line(ax_psth, [0 0], factor_ylim, 'Color', 'k', ...
+                        'LineStyle', '--', 'LineWidth', 0.5);
                     set(ax_psth, 'XLim', PSTH_WINDOW, 'YLim', factor_ylim, ...
                         'TickDir', 'Out', 'Box', 'Off', 'FontSize', 6);
 
@@ -911,4 +985,54 @@ for i_cluster = clusters_to_process
     close(fig);
 end
 
+end
+
+function [x, y] = raster_points(spike_times, event_times, window, y_start)
+% RASTER_POINTS Spike times relative to each event within window, with
+% the row (y_start + trial number) of each spike, for a single plot call.
+% spike_times must be sorted. Events that are NaN contribute no spikes.
+st = spike_times(:);
+ev = event_times(:);
+n_ev = numel(ev);
+
+% Index range of each trial's spikes: spikes with
+% ev + window(1) <= t <= ev + window(2)
+lo = count_spikes(st, ev + window(1), false);
+hi = count_spikes(st, ev + window(2), true);
+counts = hi - lo;
+counts(isnan(ev)) = 0;
+
+x = zeros(sum(counts), 1);
+y = zeros(sum(counts), 1);
+k = 0;
+for i = 1:n_ev
+    if counts(i) > 0
+        idx = (lo(i) + 1):hi(i);
+        x(k + (1:counts(i))) = st(idx) - ev(i);
+        y(k + (1:counts(i))) = y_start + i;
+        k = k + counts(i);
+    end
+end
+end
+
+function n = count_spikes(st, q, inclusive)
+% COUNT_SPIKES Number of sorted spike times below each query time
+% (< q, or <= q if inclusive), using one sort.
+nq = numel(q);
+q_sort = q;
+q_sort(isnan(q_sort)) = -inf;
+if inclusive
+    % Spikes before queries: ties count as below the query
+    [~, order] = sort([st; q_sort]);
+    is_query = order > numel(st);
+    query_id = order(is_query) - numel(st);
+else
+    % Queries before spikes: ties do not count as below the query
+    [~, order] = sort([q_sort; st]);
+    is_query = order <= nq;
+    query_id = order(is_query);
+end
+pos = find(is_query);
+n = zeros(nq, 1);
+n(query_id) = pos - (1:nq)';
 end

@@ -28,11 +28,16 @@
 %
 
 function session_data = analyze_anova(session_data, core_data, ...
-    conditions, anova_plan)
+    conditions, anova_plan, stability_info)
 
     %% Setup Paths
     [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
     addpath(fullfile(script_dir, 'utils'));
+
+    % Handle optional stability_info argument for neuron present trials
+    if nargin < 5
+        stability_info = [];
+    end
 
     %% Unpack ANOVA Parameters
     event_name = anova_plan.event;
@@ -100,6 +105,21 @@ function session_data = analyze_anova(session_data, core_data, ...
     % This results in a [n_neurons x n_valid_trials x n_time_bins] matrix
     fr_data = event_data.rates(:, trial_mask, :);
     n_neurons = size(fr_data, 1);
+
+    %% Compute neuron present trial masks if stability_info is provided
+    use_stable_trials = false;
+    neuron_trial_masks = [];
+    % Note: trial_mask is applied to core_data, so we need to map stability_info
+    % to the filtered trials. The trial_mask is a logical vector over core_data trials.
+    if ~isempty(stability_info) && isfield(core_data, 'trial_indices')
+        % First get masks for all core_data trials
+        all_trial_masks = get_neuron_present_trials(stability_info, ...
+            core_data.trial_indices, n_neurons);
+        % Then filter to just the trials selected by trial_mask
+        neuron_trial_masks = all_trial_masks(:, trial_mask);
+        use_stable_trials = true;
+        fprintf('analyze_anova: Using neuron present trials (stable periods)\n');
+    end
 
     %% Prepare Factors for ANOVA
     factor_names_lower = anova_plan.factors;
@@ -179,12 +199,25 @@ function session_data = analyze_anova(session_data, core_data, ...
         for i_neuron = 1:n_neurons
             y = squeeze(fr_filt(i_neuron, :, i_bin))';
 
-            if sum(~isnan(y)) < length(y) * 0.5 || isempty(y) || ...
-                    all(y == y(1))
+            % Apply neuron-specific stable trial mask (if available)
+            if use_stable_trials && ~isempty(neuron_trial_masks)
+                stable_mask = neuron_trial_masks(i_neuron, :)';
+                y_stable = y(stable_mask);
+                group_vars_stable = cell(1, num_factors);
+                for i_fac = 1:num_factors
+                    group_vars_stable{i_fac} = group_vars{i_fac}(stable_mask);
+                end
+            else
+                y_stable = y;
+                group_vars_stable = group_vars;
+            end
+
+            if sum(~isnan(y_stable)) < length(y_stable) * 0.5 || isempty(y_stable) || ...
+                    all(y_stable == y_stable(1))
                 continue; % Skip if data is insufficient or constant
             end
 
-            [p, tbl, ~, ~] = anovan(y, group_vars, 'model', ...
+            [p, tbl, ~, ~] = anovan(y_stable, group_vars_stable, 'model', ...
                 'interaction', 'varnames', factor_names_capitalized, ...
                 'display', 'off');
 

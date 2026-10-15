@@ -24,7 +24,17 @@ bin_width = 0.025; % 25ms bin size
 step_size = 0.025; % 25ms step size
 
 % Get basic info
-neuron_cluster_ids = find(selected_neurons);
+% selected_neurons is a logical mask over the rows of cluster_info, so
+% the actual cluster IDs must be looked up there. They are 0-based
+% (Kilosort convention) and cannot be assumed to equal row indices.
+all_cluster_ids = session_data.spikes.cluster_info.cluster_id;
+if numel(selected_neurons) ~= numel(all_cluster_ids)
+    error('prepare_neuronal_data:maskSizeMismatch', ...
+        ['selected_neurons has %d elements but cluster_info has ' ...
+         '%d clusters.'], numel(selected_neurons), ...
+        numel(all_cluster_ids));
+end
+neuron_cluster_ids = all_cluster_ids(logical(selected_neurons));
 n_selected_neurons = numel(neuron_cluster_ids);
 n_trials = numel(trial_indices);
 

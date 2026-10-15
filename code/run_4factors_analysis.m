@@ -28,11 +28,16 @@ clear; clc; close all;
 
 % --- USER TOGGLES ---
 force_rerun = struct(...
-    'screening', true, ...   % Re-run to populate neuron_class
+    'screening', false, ...
     'diag_pdfs', false, ...
     'dataprep',  false, ...
     'analyses',  false ...
 );
+generate_stability_plots = false;  % Set to true to generate stability diagnostic PDFs
+generate_screening_metrics_plots = true;  % Set to true to generate screening metrics PDFs
+% Stop each session after screening (skip diagnostic PDFs and analyses).
+% Useful for reviewing inclusion before the long analysis step.
+stop_after_screening = false;
 % --- END USER TOGGLES ---
 
 [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
@@ -417,9 +422,13 @@ for i = 1:height(manifest)
             step_counter, n_total_steps);
         giveFeed('Running refined neuron screening...');
 
+        % Stable periods before screening (analyses depend on them)
+        stable_before = get_stable_periods(session_data);
+
         % Apply the new unified screening function
         % Pass project_root to enable SC-specific classification (neuron_class)
-        [selected_neurons, screening_info] = apply_neuron_screening(...
+        % The third output (session_data) contains cached_modulation_info for future runs
+        [selected_neurons, screening_info, session_data] = apply_neuron_screening(...
             session_data, core_data, analysis_plan, project_root);
 
         % Store results
@@ -446,6 +455,23 @@ for i = 1:height(manifest)
             giveFeed(sprintf('SC Side determined: %s', scSide));
         end
 
+        % Analyses run on all neurons but use each neuron's stable-trial
+        % mask. If screening changed the stable periods, results
+        % computed earlier are stale; remove them so that they are
+        % recomputed below. (Inclusion itself is applied at
+        % aggregation, so changing only inclusion keeps analyses.)
+        stale_fields = {'baseline_comparison', 'roc_comparison', ...
+            'window_roc', 'anova_results', 'population_decoding'};
+        stale_fields = stale_fields(isfield(session_data.analysis, ...
+            stale_fields));
+        if ~isequaln(stable_before, get_stable_periods(session_data)) ...
+                && ~isempty(stale_fields)
+            session_data.analysis = rmfield(session_data.analysis, ...
+                stale_fields);
+            giveFeed(sprintf(['Cleared analyses that depend on ' ...
+                'screening: %s'], strjoin(stale_fields, ', ')));
+        end
+
         data_updated = true;
         manifest.screening_status{i} = 'complete';
         giveFeed('Screening complete.');
@@ -459,199 +485,71 @@ for i = 1:height(manifest)
         end
     end
 
-    % --- 3. Per-Neuron Diagnostic PDF Generation (for ALL neurons) ---
-    giveFeed('Checking for per-neuron diagnostic PDFs...');
-    diag_output_dir = fullfile(project_root, 'figures', session_id);
+    % --- Generate Stability Diagnostic Plots (optional) ---
+    if generate_stability_plots && isfield(session_data, 'stability_info')
+        giveFeed('Generating stability diagnostic plots...');
+        stability_output_dir = fullfile(project_root, 'figures');
+        plot_neuron_stability(session_data, session_data.stability_info, ...
+            stability_output_dir, session_id);
+        giveFeed('Stability plots saved.');
+    end
 
-    % Check if the directory exists and contains any PDF files
-    % Note: Diagnostic PDFs are only regenerated when explicitly requested,
-    % not automatically when screening is re-run
-    if (~exist(diag_output_dir, 'dir') || isempty(dir(fullfile( ...
-            diag_output_dir, '*.pdf')))) || force_rerun.diag_pdfs
-        step_counter = step_counter + 1;
-        fprintf(['\n--- Session %s: Starting Step %d of %d: ' ...
-            'Diagnostic PDF Generation (ALL neurons) ---\n'], unique_id, ...
-            step_counter, n_total_steps);
-        giveFeed('Generating diagnostic PDFs for ALL neurons...');
-        if ~exist(diag_output_dir, 'dir')
-            mkdir(diag_output_dir);
-        end
-        % Pass screening_info for detailed status headers
-        if exist('screening_info', 'var') && ~isempty(screening_info)
-            generate_neuron_summary_pdf(session_data, selected_neurons, ...
-                session_id, diag_output_dir, 'ScreeningInfo', screening_info);
-        else
-            generate_neuron_summary_pdf(session_data, selected_neurons, ...
-                session_id, diag_output_dir);
-        end
-        giveFeed('Diagnostic PDF generation complete.');
+    % --- Generate Screening Metrics Plots (optional) ---
+    if generate_screening_metrics_plots && ~isempty(screening_info)
+        giveFeed('Generating screening metrics plots...');
+        screening_output_dir = fullfile(project_root, 'figures');
+        plot_screening_metrics_session(session_data, screening_info, ...
+            screening_output_dir, session_id);
+        giveFeed('Screening metrics plots saved.');
+    end
+
+    if stop_after_screening
+        giveFeed('stop_after_screening: skipping PDFs and analyses.');
     else
-        giveFeed('Diagnostic PDFs already exist, skipping...');
-    end
+        % --- 3. Per-Neuron Diagnostic PDF Generation (for ALL neurons) ---
+        giveFeed('Checking for per-neuron diagnostic PDFs...');
+        diag_output_dir = fullfile(project_root, 'figures', session_id);
 
-    % --- On-Demand Analysis Execution ---
-    giveFeed('Checking for missing analyses...');
-
-    % A. Baseline Comparison Analyses
-    for j = 1:length(analysis_plan.baseline_plan)
-        plan_item = analysis_plan.baseline_plan(j);
-        comp_name = plan_item.name;
-        is_any_event_missing = false;
-
-        % Idempotency Check: Loop through all required events
-        for k = 1:length(analysis_plan.events)
-            event_name = analysis_plan.events{k};
-            path_to_check = fullfile('analysis', 'baseline_comparison', ...
-                event_name, comp_name);
-            S = substruct_from_path(path_to_check);
-            try
-                subsref(session_data, S);
-            catch
-                is_any_event_missing = true;
-                break;
-            end
-        end
-
-        if is_any_event_missing || force_rerun.analyses
+        % Check if the directory exists and contains any PDF files
+        % Note: Diagnostic PDFs are only regenerated when explicitly requested,
+        % not automatically when screening is re-run
+        if (~exist(diag_output_dir, 'dir') || isempty(dir(fullfile( ...
+                diag_output_dir, '*.pdf')))) || force_rerun.diag_pdfs
             step_counter = step_counter + 1;
-            fprintf(['\n--- Session %s: Step %d/%d: Baseline ' ...
-                'Comparison for %s ---\n'], unique_id, step_counter, ...
-                n_total_steps, comp_name);
-            giveFeed(sprintf('--> Running Baseline Comparison: %s', ...
-                comp_name));
-
-            % Call analyze_baseline_comparison once with all events
-            result_by_event = analyze_baseline_comparison(core_data, ...
-                conditions, plan_item, alignment_events);
-
-            % Merge the results into the session_data struct
-            event_names = fieldnames(result_by_event);
-            for k = 1:length(event_names)
-                event_name = event_names{k};
-                if ~isfield(session_data.analysis, 'baseline_comparison')
-                    session_data.analysis.baseline_comparison = struct();
-                end
-                session_data.analysis.baseline_comparison.(event_name).(comp_name) = ...
-                    result_by_event.(event_name).(comp_name);
+            fprintf(['\n--- Session %s: Starting Step %d of %d: ' ...
+                'Diagnostic PDF Generation (ALL neurons) ---\n'], unique_id, ...
+                step_counter, n_total_steps);
+            giveFeed('Generating diagnostic PDFs for ALL neurons...');
+            if ~exist(diag_output_dir, 'dir')
+                mkdir(diag_output_dir);
             end
-            data_updated = true;
-        end
-    end
-
-    % B. ROC Comparison Analyses
-    % The roc_plan is event-agnostic. For each comparison in the plan, we
-    % run the analysis for every alignment_event.
-    for j = 1:length(analysis_plan.roc_plan)
-        comp = analysis_plan.roc_plan(j);
-        comp_name = comp.name;
-        is_any_event_missing = false;
-
-        % Idempotency Check: Re-check if any event's results are missing
-        % before committing to the full run. This is consistent with other
-        % event-based analyses like ANOVA.
-        for k = 1:length(alignment_events)
-            event_name = alignment_events{k};
-            path_to_check = fullfile('analysis', 'roc_comparison', event_name, comp_name);
-            S = substruct_from_path(path_to_check);
-            try
-                subsref(session_data, S);
-            catch
-                is_any_event_missing = true;
-                break;
+            % Pass screening_info for detailed status headers
+            if exist('screening_info', 'var') && ~isempty(screening_info)
+                generate_neuron_summary_pdf(session_data, selected_neurons, ...
+                    session_id, diag_output_dir, 'ScreeningInfo', screening_info);
+            else
+                generate_neuron_summary_pdf(session_data, selected_neurons, ...
+                    session_id, diag_output_dir);
             end
+            giveFeed('Diagnostic PDF generation complete.');
+        else
+            giveFeed('Diagnostic PDFs already exist, skipping...');
         end
 
-        if is_any_event_missing || force_rerun.analyses
-            step_counter = step_counter + 1;
-            fprintf(['\n--- Session %s: Step %d/%d: ROC Comparison ' ...
-                'for %s ---\n'], unique_id, step_counter, ...
-                n_total_steps, comp_name);
-            giveFeed(sprintf('--> Running ROC Comparison: %s across all events', comp_name));
+        % --- On-Demand Analysis Execution ---
+        giveFeed('Checking for missing analyses...');
 
-            % Loop through each event, inject it into a temporary plan,
-            % and run the analysis.
-            for k = 1:length(alignment_events)
-                event_name = alignment_events{k};
-
-                % Create a temporary comparison struct and add the .event
-                % field, which is required by analyze_roc_comparison.
-                temp_comp = comp;
-                temp_comp.event = event_name;
-
-                % Run the analysis for the current event
-                result = analyze_roc_comparison(core_data, conditions, temp_comp);
-
-                % Store the result in the correct, event-specific nested structure
-                session_data.analysis.roc_comparison.(event_name).(comp_name) = result;
-            end
-            data_updated = true;
-        end
-    end
-
-    % B2. Window-Based ROC Analysis
-    % Computes ROC AUC in fixed time windows per neuron × factor × epoch
-    if isfield(analysis_plan, 'window_roc_plan')
-        path_to_check = fullfile('analysis', 'window_roc');
-        S = substruct_from_path(path_to_check);
-        is_missing = false;
-        try
-            subsref(session_data, S);
-        catch
-            is_missing = true;
-        end
-
-        if is_missing || force_rerun.analyses
-            step_counter = step_counter + 1;
-            fprintf(['\n--- Session %s: Step %d/%d: Window-Based ROC ' ...
-                'Analysis ---\n'], unique_id, step_counter, n_total_steps);
-
-            % Compute per-neuron preferred locations (for SC neurons)
-            % This determines which target location produces the strongest
-            % response for each neuron, enabling more sensitive factor comparisons.
-            preferred_locations = [];
-            if strcmp(session_data.metadata.brain_area, 'SC') && ...
-               isfield(analysis_plan.window_roc_plan, 'location_mode') && ...
-               strcmp(analysis_plan.window_roc_plan.location_mode, 'preferred')
-                giveFeed('--> Computing per-neuron preferred locations...');
-                preferred_locations = compute_preferred_locations(...
-                    session_data, core_data, conditions, analysis_plan);
-
-                % Store preferred locations for later reference
-                session_data.analysis.preferred_locations = preferred_locations;
-
-                % Report distribution
-                pref_locs = preferred_locations.for_factors;
-                for loc = 1:4
-                    n_at_loc = sum(pref_locs == loc);
-                    giveFeed(sprintf('    Location %d: %d neurons', loc, n_at_loc));
-                end
-            end
-
-            giveFeed('--> Running Window-Based ROC Analysis...');
-
-            % Run the analysis (pass preferred_locations, may be empty for SNc)
-            window_roc_results = analyze_window_roc(session_data, ...
-                conditions, analysis_plan, core_data, preferred_locations);
-
-            % Store the results
-            session_data.analysis.window_roc = window_roc_results;
-            data_updated = true;
-            giveFeed('--> Window-Based ROC Analysis complete.');
-        end
-    end
-
-    % C. N-way ANOVA Analysis
-    if isfield(analysis_plan, 'anova_plan')
-        for j = 1:length(analysis_plan.anova_plan)
-            plan_item = analysis_plan.anova_plan(j);
-            analysis_name = plan_item.name;
-
-            % Idempotency check: check all events
+        % A. Baseline Comparison Analyses
+        for j = 1:length(analysis_plan.baseline_plan)
+            plan_item = analysis_plan.baseline_plan(j);
+            comp_name = plan_item.name;
             is_any_event_missing = false;
+
+            % Idempotency Check: Loop through all required events
             for k = 1:length(analysis_plan.events)
                 event_name = analysis_plan.events{k};
-                path_to_check = fullfile('analysis', 'anova_results', ...
-                    analysis_name, event_name);
+                path_to_check = fullfile('analysis', 'baseline_comparison', ...
+                    event_name, comp_name);
                 S = substruct_from_path(path_to_check);
                 try
                     subsref(session_data, S);
@@ -663,41 +561,93 @@ for i = 1:height(manifest)
 
             if is_any_event_missing || force_rerun.analyses
                 step_counter = step_counter + 1;
-                fprintf(['\n--- Session %s: Step %d/%d: N-way ANOVA ' ...
-                    'for %s ---\n'], ...
-                    unique_id, step_counter, n_total_steps, analysis_name);
-                giveFeed(sprintf('--> Running N-way ANOVA: %s', ...
-                    analysis_name));
+                fprintf(['\n--- Session %s: Step %d/%d: Baseline ' ...
+                    'Comparison for %s ---\n'], unique_id, step_counter, ...
+                    n_total_steps, comp_name);
+                giveFeed(sprintf('--> Running Baseline Comparison: %s', ...
+                    comp_name));
 
-                % Loop through each event and run the analysis
-                for k = 1:length(alignment_events)
-                    event_name = alignment_events{k};
+                % Get stability_info for neuron present trials
+                stability_info_for_baseline = [];
+                if isfield(session_data, 'stability_info')
+                    stability_info_for_baseline = session_data.stability_info;
+                end
 
-                    % Create a temporary plan item with the event field
-                    temp_plan_item = plan_item;
-                    temp_plan_item.event = event_name;
+                % Call analyze_baseline_comparison once with all events
+                % stability_info enables using only trials where each neuron was stably recorded
+                result_by_event = analyze_baseline_comparison(core_data, ...
+                    conditions, plan_item, alignment_events, stability_info_for_baseline);
 
-                    % Pass the temporary plan item to the analysis function
-                    session_data = analyze_anova(session_data, core_data, ...
-                        conditions, temp_plan_item);
+                % Merge the results into the session_data struct
+                event_names = fieldnames(result_by_event);
+                for k = 1:length(event_names)
+                    event_name = event_names{k};
+                    if ~isfield(session_data.analysis, 'baseline_comparison')
+                        session_data.analysis.baseline_comparison = struct();
+                    end
+                    session_data.analysis.baseline_comparison.(event_name).(comp_name) = ...
+                        result_by_event.(event_name).(comp_name);
                 end
                 data_updated = true;
             end
         end
-    end
 
-    % D. Behavioral Analyses
-    % Loop through each behavioral analysis plan.
-    if isfield(analysis_plan, 'behavior_plan')
-        for j = 1:length(analysis_plan.behavior_plan)
-            plan_item = analysis_plan.behavior_plan(j);
-            analysis_name = plan_item.name;
+        % B. ROC Comparison Analyses
+        % The roc_plan is event-agnostic. For each comparison in the plan, we
+        % run the analysis for every alignment_event.
+        for j = 1:length(analysis_plan.roc_plan)
+            comp = analysis_plan.roc_plan(j);
+            comp_name = comp.name;
+            is_any_event_missing = false;
 
-            % Use substruct_from_path for a robust idempotency check.
-            is_missing = false;
-            path_to_check = fullfile('analysis', ...
-                'behavioral_results', analysis_name);
+            % Idempotency Check: Re-check if any event's results are missing
+            % before committing to the full run. This is consistent with other
+            % event-based analyses like ANOVA.
+            for k = 1:length(alignment_events)
+                event_name = alignment_events{k};
+                path_to_check = fullfile('analysis', 'roc_comparison', event_name, comp_name);
+                S = substruct_from_path(path_to_check);
+                try
+                    subsref(session_data, S);
+                catch
+                    is_any_event_missing = true;
+                    break;
+                end
+            end
+
+            if is_any_event_missing || force_rerun.analyses
+                step_counter = step_counter + 1;
+                fprintf(['\n--- Session %s: Step %d/%d: ROC Comparison ' ...
+                    'for %s ---\n'], unique_id, step_counter, ...
+                    n_total_steps, comp_name);
+                giveFeed(sprintf('--> Running ROC Comparison: %s across all events', comp_name));
+
+                % Loop through each event, inject it into a temporary plan,
+                % and run the analysis.
+                for k = 1:length(alignment_events)
+                    event_name = alignment_events{k};
+
+                    % Create a temporary comparison struct and add the .event
+                    % field, which is required by analyze_roc_comparison.
+                    temp_comp = comp;
+                    temp_comp.event = event_name;
+
+                    % Run the analysis for the current event
+                    result = analyze_roc_comparison(core_data, conditions, temp_comp);
+
+                    % Store the result in the correct, event-specific nested structure
+                    session_data.analysis.roc_comparison.(event_name).(comp_name) = result;
+                end
+                data_updated = true;
+            end
+        end
+
+        % B2. Window-Based ROC Analysis
+        % Computes ROC AUC in fixed time windows per neuron × factor × epoch
+        if isfield(analysis_plan, 'window_roc_plan')
+            path_to_check = fullfile('analysis', 'window_roc');
             S = substruct_from_path(path_to_check);
+            is_missing = false;
             try
                 subsref(session_data, S);
             catch
@@ -706,85 +656,205 @@ for i = 1:height(manifest)
 
             if is_missing || force_rerun.analyses
                 step_counter = step_counter + 1;
-                fprintf(['\n--- Session %s: Step %d/%d: Behavioral ' ...
-                    'Analysis for %s ---\n'], unique_id, step_counter, ...
-                    n_total_steps, analysis_name);
-                giveFeed(sprintf('--> Running Behavioral Analysis: %s', ...
-                    analysis_name));
+                fprintf(['\n--- Session %s: Step %d/%d: Window-Based ROC ' ...
+                    'Analysis ---\n'], unique_id, step_counter, n_total_steps);
 
-                result = analyze_behavior(session_data, conditions, ...
-                    plan_item);
-                session_data.analysis.behavioral_results.(...
-                    analysis_name) = result;
+                % Compute per-neuron preferred locations (for SC neurons)
+                % This determines which target location produces the strongest
+                % response for each neuron, enabling more sensitive factor comparisons.
+                preferred_locations = [];
+                stability_info_for_analysis = [];
+                if isfield(session_data, 'stability_info')
+                    stability_info_for_analysis = session_data.stability_info;
+                end
+
+                if strcmp(session_data.metadata.brain_area, 'SC') && ...
+                   isfield(analysis_plan.window_roc_plan, 'location_mode') && ...
+                   strcmp(analysis_plan.window_roc_plan.location_mode, 'preferred')
+                    giveFeed('--> Computing per-neuron preferred locations...');
+                    % Pass stability_info to use neuron present trials
+                    preferred_locations = compute_preferred_locations(...
+                        session_data, core_data, conditions, analysis_plan, stability_info_for_analysis);
+
+                    % Store preferred locations for later reference
+                    session_data.analysis.preferred_locations = preferred_locations;
+
+                    % Report distribution
+                    pref_locs = preferred_locations.for_factors;
+                    for loc = 1:4
+                        n_at_loc = sum(pref_locs == loc);
+                        giveFeed(sprintf('    Location %d: %d neurons', loc, n_at_loc));
+                    end
+                end
+
+                giveFeed('--> Running Window-Based ROC Analysis...');
+
+                % Run the analysis (pass preferred_locations and stability_info)
+                % stability_info enables using only trials where each neuron was stably recorded
+                window_roc_results = analyze_window_roc(session_data, ...
+                    conditions, analysis_plan, core_data, preferred_locations, stability_info_for_analysis);
+
+                % Store the results
+                session_data.analysis.window_roc = window_roc_results;
                 data_updated = true;
+                giveFeed('--> Window-Based ROC Analysis complete.');
             end
         end
-    end
 
-    % E. Population Decoding Analyses
-    if isfield(analysis_plan, 'decoding_plan')
-        % Idempotency check for the entire decoding suite. The suite is run
-        % if any of its final test results are missing, ensuring that
-        % transient trained models are always available for testing.
-        run_decoding_suite = false;
-        if force_rerun.analyses
-            run_decoding_suite = true;
-        else
-            if ~isfield(session_data, 'analysis') || ~isfield(...
-                    session_data.analysis, 'population_decoding')
-                run_decoding_suite = true;
-            else
-                testing_plan = analysis_plan.decoding_plan.testing_plan;
-                for j = 1:length(testing_plan)
-                    test_name = testing_plan(j).test_name;
-                    if ~isfield(...
-                            session_data.analysis.population_decoding, ...
-                            test_name)
-                        run_decoding_suite = true;
+        % C. N-way ANOVA Analysis
+        if isfield(analysis_plan, 'anova_plan')
+            for j = 1:length(analysis_plan.anova_plan)
+                plan_item = analysis_plan.anova_plan(j);
+                analysis_name = plan_item.name;
+
+                % Idempotency check: check all events
+                is_any_event_missing = false;
+                for k = 1:length(analysis_plan.events)
+                    event_name = analysis_plan.events{k};
+                    path_to_check = fullfile('analysis', 'anova_results', ...
+                        analysis_name, event_name);
+                    S = substruct_from_path(path_to_check);
+                    try
+                        subsref(session_data, S);
+                    catch
+                        is_any_event_missing = true;
                         break;
                     end
+                end
+
+                if is_any_event_missing || force_rerun.analyses
+                    step_counter = step_counter + 1;
+                    fprintf(['\n--- Session %s: Step %d/%d: N-way ANOVA ' ...
+                        'for %s ---\n'], ...
+                        unique_id, step_counter, n_total_steps, analysis_name);
+                    giveFeed(sprintf('--> Running N-way ANOVA: %s', ...
+                        analysis_name));
+
+                    % Get stability_info for neuron present trials
+                    stability_info_for_analysis = [];
+                    if isfield(session_data, 'stability_info')
+                        stability_info_for_analysis = session_data.stability_info;
+                    end
+
+                    % Loop through each event and run the analysis
+                    for k = 1:length(alignment_events)
+                        event_name = alignment_events{k};
+
+                        % Create a temporary plan item with the event field
+                        temp_plan_item = plan_item;
+                        temp_plan_item.event = event_name;
+
+                        % Pass the temporary plan item to the analysis function
+                        % stability_info enables using only trials where each neuron was stably recorded
+                        session_data = analyze_anova(session_data, core_data, ...
+                            conditions, temp_plan_item, stability_info_for_analysis);
+                    end
+                    data_updated = true;
                 end
             end
         end
 
-        if run_decoding_suite
-            % --- Stage 1: Train Models ---
-            step_counter = step_counter + 1;
-            fprintf(['\n--- Session %s: Step %d/%d: Population ' ...
-                'Decoding: Model Training ---\n'], unique_id, ...
-                step_counter, n_total_steps);
-            giveFeed('--> Training all decoding models...');
+        % D. Behavioral Analyses
+        % Loop through each behavioral analysis plan.
+        if isfield(analysis_plan, 'behavior_plan')
+            for j = 1:length(analysis_plan.behavior_plan)
+                plan_item = analysis_plan.behavior_plan(j);
+                analysis_name = plan_item.name;
 
-            trained_models = {};
-            training_plan = analysis_plan.decoding_plan.training_plan;
-            for j = 1:length(training_plan)
-                modelInfo = train_decoder(session_data, conditions, ...
-                    core_data, training_plan(j));
-                trained_models{end+1} = modelInfo;
+                % Use substruct_from_path for a robust idempotency check.
+                is_missing = false;
+                path_to_check = fullfile('analysis', ...
+                    'behavioral_results', analysis_name);
+                S = substruct_from_path(path_to_check);
+                try
+                    subsref(session_data, S);
+                catch
+                    is_missing = true;
+                end
+
+                if is_missing || force_rerun.analyses
+                    step_counter = step_counter + 1;
+                    fprintf(['\n--- Session %s: Step %d/%d: Behavioral ' ...
+                        'Analysis for %s ---\n'], unique_id, step_counter, ...
+                        n_total_steps, analysis_name);
+                    giveFeed(sprintf('--> Running Behavioral Analysis: %s', ...
+                        analysis_name));
+
+                    result = analyze_behavior(session_data, conditions, ...
+                        plan_item);
+                    session_data.analysis.behavioral_results.(...
+                        analysis_name) = result;
+                    data_updated = true;
+                end
             end
-            giveFeed('--> Model training complete.');
+        end
 
-            % --- Stage 2: Test Models ---
-            step_counter = step_counter + 1;
-            fprintf(['\n--- Session %s: Step %d/%d: Population ' ...
-                'Decoding: Model Testing ---\n'], unique_id, ...
-                step_counter, n_total_steps);
-            giveFeed('--> Running decoding model tests...');
-
-            testing_plan = analysis_plan.decoding_plan.testing_plan;
-            for j = 1:length(testing_plan)
-                testing_item = testing_plan(j);
-                results = test_decoder(trained_models, conditions, ...
-                    core_data, testing_item);
-                session_data.analysis.population_decoding.(...
-                    testing_item.test_name) = results;
-                data_updated = true;
+        % E. Population Decoding Analyses
+        if isfield(analysis_plan, 'decoding_plan')
+            % Idempotency check for the entire decoding suite. The suite is run
+            % if any of its final test results are missing, ensuring that
+            % transient trained models are always available for testing.
+            run_decoding_suite = false;
+            if force_rerun.analyses
+                run_decoding_suite = true;
+            else
+                if ~isfield(session_data, 'analysis') || ~isfield(...
+                        session_data.analysis, 'population_decoding')
+                    run_decoding_suite = true;
+                else
+                    testing_plan = analysis_plan.decoding_plan.testing_plan;
+                    for j = 1:length(testing_plan)
+                        test_name = testing_plan(j).test_name;
+                        if ~isfield(...
+                                session_data.analysis.population_decoding, ...
+                                test_name)
+                            run_decoding_suite = true;
+                            break;
+                        end
+                    end
+                end
             end
-            giveFeed('--> Model testing complete.');
-        else
-            giveFeed('--> Population decoding suite already complete.');
+
+            if run_decoding_suite
+                % --- Stage 1: Train Models ---
+                step_counter = step_counter + 1;
+                fprintf(['\n--- Session %s: Step %d/%d: Population ' ...
+                    'Decoding: Model Training ---\n'], unique_id, ...
+                    step_counter, n_total_steps);
+                giveFeed('--> Training all decoding models...');
+
+                trained_models = {};
+                training_plan = analysis_plan.decoding_plan.training_plan;
+                for j = 1:length(training_plan)
+                    modelInfo = train_decoder(session_data, conditions, ...
+                        core_data, training_plan(j));
+                    trained_models{end+1} = modelInfo;
+                end
+                giveFeed('--> Model training complete.');
+
+                % --- Stage 2: Test Models ---
+                step_counter = step_counter + 1;
+                fprintf(['\n--- Session %s: Step %d/%d: Population ' ...
+                    'Decoding: Model Testing ---\n'], unique_id, ...
+                    step_counter, n_total_steps);
+                giveFeed('--> Running decoding model tests...');
+
+                testing_plan = analysis_plan.decoding_plan.testing_plan;
+                for j = 1:length(testing_plan)
+                    testing_item = testing_plan(j);
+                    results = test_decoder(trained_models, conditions, ...
+                        core_data, testing_item);
+                    session_data.analysis.population_decoding.(...
+                        testing_item.test_name) = results;
+                    data_updated = true;
+                end
+                giveFeed('--> Model testing complete.');
+            else
+                giveFeed('--> Population decoding suite already complete.');
+            end
         end
     end
+
 
     % --- Save Updated Data ---
     if data_updated
@@ -915,8 +985,28 @@ for i = 1:height(manifest)
         session_id));
 end
 
+%% Generate Aggregate Screening Metrics (if enabled)
+if generate_screening_metrics_plots
+    giveFeed('Generating aggregate screening metrics visualizations...');
+    aggregate_data = aggregate_screening_data(manifest, project_root);
+    plot_screening_metrics_aggregate(aggregate_data, fullfile(project_root, 'figures'));
+    giveFeed('Aggregate screening metrics plots saved.');
+end
+
 %% Finalize
 giveFeed('All sessions processed. Saving updated manifest...');
 writetable(manifest, manifest_path);
 giveFeed('Manifest saved. Total time elapsed:');
 toc
+
+function periods = get_stable_periods(session_data)
+% GET_STABLE_PERIODS [start, end, is_stable] per neuron from
+% session_data.stability_info (empty if not available).
+periods = [];
+if isfield(session_data, 'stability_info') && ...
+        ~isempty(session_data.stability_info)
+    si = session_data.stability_info;
+    periods = [[si.stable_trial_start]', [si.stable_trial_end]', ...
+        [si.is_stable]'];
+end
+end

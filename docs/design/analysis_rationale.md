@@ -158,42 +158,65 @@ All condition masks are defined in `define_task_conditions.m`, which serves as t
 
 ## 3. Neuron Classification and Screening
 
-### 3.1 Current Approach
+### 3.1 Current Approach (v1 - Legacy)
 
 **SC Neurons** (`screen_sc_neurons.m`):
-- Uses Friedman test across four epochs (baseline, visual, delay, saccade)
-- If significant, performs Bonferroni-corrected Wilcoxon tests comparing baseline to each other epoch
-- Selects neurons showing significant **increase** in any epoch with max FR > 5 sp/s
+- Quality gates: Mean FR > 3.0 sp/s, sparsity <= 80% empty bins
+- Statistical test: Friedman test across four epochs (baseline, visual, delay, saccade) at each target location, followed by Bonferroni-corrected Wilcoxon post-hocs (alpha = 0.05/3)
+- Three-tier classification:
+  - `classic`: Contralateral activation, no opposing activation (180 deg apart in Visual/Saccade epochs), no contralateral suppression
+  - `interneuron`: Passes FR/sparsity gates, task-modulated, but has opposing activation OR contralateral suppression
+  - `excluded`: Fails FR, sparsity, or task-modulation criteria
+- Current counts: 138 classic (19.9%), 131 interneuron (18.9%), 425 excluded (61.2%) of 694 total
+- Manual override mechanism exists for edge cases
 
-**DA Neurons** (`screen_da_neurons.m`):
-- Selects based on: baseline FR < 20 sp/s AND waveform duration > 0.6 ms
+**Known limitations of v1:**
+1. Weak ipsilateral responses (small magnitude but significant) falsely trigger "opposing activation," misclassifying otherwise-classic neurons as interneurons
+2. The "interneuron" category is heterogeneous (broadly activated, suppressed, non-contralateral-preferring neurons all grouped together)
+3. Binary spatial criterion (opposing yes/no) ignores relative magnitudes
+4. No V/VM/M/D temporal subtyping
 
-### 3.2 Proposed Expansion: Neuron Classification
+**SNc Neurons** (`screen_snc_neurons.m`):
+- Categories: `modulated` (arrayROC bootstrap CI excludes 0.5 for >= 3 consecutive bins, FR > 1 sp/s, sparsity <= 70%) or `excluded`
 
-**Rationale**: The current SC screening excludes neurons that are suppressed by visual stimuli or unmodulated. Hypothesis 4 specifically concerns these excluded neurons.
+### 3.2 Data-Driven SC Classification (v2 - In Development)
 
-**Proposed Classification Scheme for SC:**
+**Rationale**: Replace the ad-hoc rule-based approach with data-driven clustering that leverages the full multi-location response data from the 4factors task. The goal is to discover natural groupings and map them to biologically meaningful categories.
 
-| Category | Criteria | Interpretation |
-|----------|----------|----------------|
-| `visually_excited` | Significant increase in visual epoch vs baseline (contralateral targets) | Classical SC visual neurons |
-| `visually_suppressed` | Significant decrease in visual epoch vs baseline (contralateral targets) | Putative interneurons |
-| `delay_modulated` | Significant change in delay epoch (either direction) | Memory-related activity |
-| `saccade_modulated` | Significant change in saccade epoch (either direction) | Motor-related activity |
-| `unmodulated` | No significant modulation in any epoch | Non-task-related or tonically active |
+**Approach**: Hybrid clustering (per `docs/sc_classification_improvement_plan.md`):
+1. Extract spatial and temporal response features from cached Friedman results
+2. Apply unsupervised clustering (hierarchical + k-means) to neurons passing quality gates
+3. Present cluster exemplars to expert for interpretation
+4. Codify final labels for reproducibility
 
-**Critical Note on Suppression**: The key criterion for `visually_suppressed` is suppression for **contralateral** target presentations. Classical visually-excited SC neurons are excited by contralateral targets and may be suppressed by ipsilateral targets—this is expected spatial selectivity, not interneuron-like behavior. True putative interneurons show suppression when targets appear in what would be the excitatory RF for projection neurons (i.e., contralateral hemifield).
+**Quality gates (unchanged from v1):**
+- Mean FR > 3.0 sp/s
+- Sparsity <= 80% empty 100ms bins
+- Task-modulated at any location/epoch
 
-**Statistical Threshold**: Same as for excitation—Bonferroni-corrected Wilcoxon rank-sum test (alpha = 0.05/3 for 3 comparisons). No minimum magnitude requirement; the key is statistical reliability of the suppression.
+Neurons failing quality gates are labeled `excluded` (not clustered).
 
-**Implementation**: Replace the single `selected_neurons` logical vector with:
-- `neuron_type`: Categorical variable with the above categories
-- `include_in_factor_analysis`: Logical vector (true for visually_excited, visually_suppressed, delay_modulated, saccade_modulated)
+**Feature space** (per neuron, extracted from cached_friedman_results):
+- Spatial: contra/ipsi activation and suppression strength per epoch, spatial selectivity index, number of locations activated/suppressed
+- Temporal: visual, delay, and saccade response magnitudes, vis-to-sac ratio, delay index
+- Polarity: excited anywhere, suppressed anywhere, mixed polarity
 
-**Hypothesis 4 Test**: For neurons classified as `visually_suppressed`:
-1. Compute factor-specific ROC values (same as for excited neurons)
+**Expected top-level categories** (to be confirmed by data):
+- `classic`: Contralateral-preferring projection neurons (encompasses V/VM/M/D subtypes as secondary attribute)
+- `broad_activated`: Activation at multiple locations including ipsilateral
+- `suppressed`: Contralateral suppression dominant
+- `mixed_polarity`: Both activation and suppression at different locations
+- Additional categories as data dictates (target: 3-7 total)
+
+**Transition strategy:**
+- `neuron_class` (v1) is preserved in all data structures for backward compatibility
+- `neuron_class_v2` added as new field with data-driven categories
+- Both run in parallel during validation; v2 becomes default after >80% expert agreement
+
+**Hypothesis 4 Test**: For neurons classified into non-classic categories (e.g., suppressed, broad_activated):
+1. Compute factor-specific ROC values (same as for classic neurons)
 2. Test whether ROC values differ from 0.5 (chance)
-3. Prediction: Suppressed neurons will show ROC ≈ 0.5 for all factors (non-selective)
+3. Prediction: Non-classic neurons show ROC closer to 0.5 (less selective)
 
 ### 3.3 SNc Subregion Labeling
 

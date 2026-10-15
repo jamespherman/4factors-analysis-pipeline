@@ -47,10 +47,11 @@ input_target_loc   % [4 × nTimeBins × nTrials] - One-hot encoding of target lo
 input_go_signal    % [nTimeBins × nTrials] - Binary, 1 after fixation offset
 input_reward_on    % [nTimeBins × nTrials] - Binary, 1 during juice delivery
 
-% Eye position (OPTIONAL - set to zeros or NaN if unavailable)
-input_eye_x        % [nTimeBins × nTrials] - Eye position X (degrees), z-score normalized in Python
-input_eye_y        % [nTimeBins × nTrials] - Eye position Y (degrees), z-score normalized in Python
-                   % Note: If eye traces aren't available, fill with zeros. Model learns to ignore.
+% Eye position - REQUIRED
+input_eye_x        % [nTimeBins × nTrials] - Eye position X (degrees of visual angle)
+input_eye_y        % [nTimeBins × nTrials] - Eye position Y (degrees of visual angle)
+                   % Note: Eye data should be sampled at the same rate as spikes (bin_size_ms).
+                   %       Python handles z-score normalization during preprocessing.
 
 % Target features (revealed at target onset) - ALL REQUIRED
 input_is_face      % [nTimeBins × nTrials] - Binary, 1 if face target (when target visible)

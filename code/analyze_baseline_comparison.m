@@ -39,11 +39,16 @@
 % Author: Jules
 % Date: 2025-09-20
 
-function analysis_results = analyze_baseline_comparison(core_data, conditions, baseline_plan_item, alignment_events)
+function analysis_results = analyze_baseline_comparison(core_data, conditions, baseline_plan_item, alignment_events, stability_info)
 %% Setup
 % Add the 'utils' directory to the path
 [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
 addpath(fullfile(script_dir, 'utils'));
+
+% Handle optional stability_info argument for neuron present trials
+if nargin < 5
+    stability_info = [];
+end
 
 % Get condition name from the baseline plan item
 condition_name = baseline_plan_item.name;
@@ -110,7 +115,19 @@ for i_event = 1:numel(alignment_events)
     % Select data based on the trial mask
     % The data array dimensions are (neurons, trials, time_bins)
     sub_data = event_data.rates(:, trial_mask, :);
-    [n_neurons, n_sel_trials] = size(sub_data);
+    [n_neurons, n_sel_trials, ~] = size(sub_data);
+
+    %% Compute neuron present trial masks if stability_info is provided
+    use_stable_trials = false;
+    neuron_trial_masks = [];
+    if ~isempty(stability_info) && isfield(core_data, 'trial_indices')
+        % First get masks for all core_data trials
+        all_trial_masks = get_neuron_present_trials(stability_info, ...
+            core_data.trial_indices, n_neurons);
+        % Then filter to just the trials selected by trial_mask
+        neuron_trial_masks = all_trial_masks(:, trial_mask);
+        use_stable_trials = true;
+    end
 
     % Initialize results arrays
     n_comp_bins = sum(comp_idx);
@@ -118,20 +135,27 @@ for i_event = 1:numel(alignment_events)
 
     % Iterate through each neuron
     for i_neuron = 1:n_neurons
+        % Apply neuron-specific stable trial mask (if available)
+        if use_stable_trials && ~isempty(neuron_trial_masks)
+            stable_mask = neuron_trial_masks(i_neuron, :);
+            neuron_data = sub_data(i_neuron, stable_mask, :);
+            n_neuron_trials = sum(stable_mask);
+        else
+            neuron_data = sub_data(i_neuron, :, :);
+            n_neuron_trials = n_sel_trials;
+        end
+
         % Get baseline activity for this neuron. Squeeze to get a
         % (trials x bins) matrix:
-        neuron_baseline_data = squeeze(sub_data(i_neuron, :, ...
-            baseline_idx));
+        neuron_baseline_data = squeeze(neuron_data(1, :, baseline_idx));
         neuron_baseline_data = repmat(neuron_baseline_data(:), 1, ...
             n_comp_bins);
 
         % Get comparison activity for this neuron
-        neuron_comp_data = squeeze(sub_data(i_neuron, :, comp_idx));
+        neuron_comp_data = squeeze(neuron_data(1, :, comp_idx));
 
         if isempty(neuron_baseline_data) || ...
-                isempty(neuron_comp_data) || n_sel_trials < 5
-            warning('arrayROC failed for neuron %d', ...
-                i_neuron, ME.message);
+                isempty(neuron_comp_data) || n_neuron_trials < 5
             continue;
         end
 

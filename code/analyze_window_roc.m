@@ -35,7 +35,7 @@
 % Date: 2026-01-15
 
 function window_roc = analyze_window_roc(session_data, conditions, ...
-    condition_defs, core_data, preferred_locations)
+    condition_defs, core_data, preferred_locations, stability_info)
 
 %% Setup
 [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
@@ -44,6 +44,25 @@ addpath(fullfile(script_dir, 'utils'));
 % Handle optional preferred_locations argument
 if nargin < 5
     preferred_locations = [];
+end
+
+% Handle optional stability_info argument for neuron present trials
+if nargin < 6
+    stability_info = [];
+end
+
+% Compute neuron present trial masks if stability_info is provided
+use_stable_trials = false;
+neuron_trial_masks = [];
+if ~isempty(stability_info) && isfield(core_data, 'trial_indices')
+    % Get number of neurons from first available event
+    spike_fields = fieldnames(core_data.spikes);
+    first_event_name = spike_fields{1};
+    n_neurons_temp = size(core_data.spikes.(first_event_name).rates, 1);
+    neuron_trial_masks = get_neuron_present_trials(stability_info, ...
+        core_data.trial_indices, n_neurons_temp);
+    use_stable_trials = true;
+    fprintf('analyze_window_roc: Using neuron present trials (stable periods)\n');
 end
 
 % Get analysis configuration
@@ -228,6 +247,14 @@ for i_epoch = 1:length(epoch_names)
                 end
             end
 
+            % Apply neuron-specific stable trial mask (if available)
+            % This ensures we only use trials where this neuron was stably recorded
+            if use_stable_trials && ~isempty(neuron_trial_masks)
+                stable_mask = neuron_trial_masks(i_neuron, :)';
+                cond1_mask = cond1_mask & stable_mask;
+                cond2_mask = cond2_mask & stable_mask;
+            end
+
             % Get window-averaged firing rates for this neuron
             neuron_rates = window_rates(i_neuron, :)';  % [n_trials × 1]
 
@@ -281,6 +308,7 @@ end
 window_roc.metadata.location_mode = location_mode;
 window_roc.metadata.use_preferred_location = use_preferred_location;
 window_roc.metadata.brain_area = brain_area;
+window_roc.metadata.use_stable_trials = use_stable_trials;
 
 end
 

@@ -58,14 +58,30 @@ condition_defs.event_field_names = {'event', 'train_event', 'test_event'};
 % When true, neurons must pass ALL THREE criteria:
 %   1. Mean firing rate threshold (brain-area specific, computed across entire session)
 %   2. Task modulation (significant deviation from baseline at ANY location/event)
-%   3. Sparsity threshold (proportion of empty 100ms bins must be < 0.7)
+%   3. Sparsity threshold (proportion of empty 100ms bins must be < 0.8)
 condition_defs.neuron_inclusion = struct(...
     'use_strict_screening', true, ...    % true = apply criteria; false = include all
-    'min_firing_rate_sc', 3.5, ...       % sp/s mean FR threshold for SC neurons (changed from 5)
+    'min_firing_rate_sc', 3.0, ...       % sp/s mean FR threshold for SC neurons (changed from 3.5)
     'min_firing_rate_snc', 1, ...        % sp/s mean FR threshold for SNc neurons
-    'max_proportion_empty_bins', 0.7, ...% max fraction of 100ms bins with 0 spikes
+    'max_proportion_empty_bins', 0.8, ...% max fraction of 100ms bins with 0 spikes (changed from 0.7)
     'consecutive_bins_required', 3 ...   % bins needed for modulation detection (changed from 2)
 );
+
+% Stability detection (detect_stable_trial_period, apply_neuron_screening).
+% Each neuron's stable period is the longest run of stable firing across
+% the trials in trial_scope. Restricting the scope to successful
+% gSac_4factors trials keeps the stable period inside the 4factors block
+% (a unit isolated only during other tasks is not "stable" here).
+% A neuron is excluded unless its stable period covers at least
+% min_coverage of the trials in scope.
+condition_defs.neuron_inclusion.stability_detection = struct(...
+    'trial_scope', 'gSac_4factors', ... % 'gSac_4factors' or 'all'
+    'min_coverage', 0.5, ...       % min fraction of in-scope trials
+    'window_size', 20, ...         % trials per sliding window
+    'step_size', 5, ...            % window step (trials)
+    'cv_threshold', 0.5, ...       % max local CV of window FR
+    'min_fr_threshold', 0.1, ...   % sp/s to count a window as present
+    'min_stable_trials', 50);      % min trials in stable period
 
 % Modulation Windows for Task Modulation Detection
 % Each event specifies baseline and test windows (in seconds) for detecting
