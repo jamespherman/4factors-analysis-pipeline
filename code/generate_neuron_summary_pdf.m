@@ -205,9 +205,9 @@ for i_cluster = clusters_to_process
         % Build modulation annotation string
         if ~isempty(info.modulated_at)
             mod_str = strjoin(info.modulated_at, ', ');
-            modulation_annotation = sprintf('Modulated: %s', mod_str);
+            modulation_annotation = sprintf('Bin-wise: %s', mod_str);
         else
-            modulation_annotation = 'Modulated: none';
+            modulation_annotation = 'Bin-wise: none';
         end
     else
         % Fall back to legacy behavior using selected_neurons
@@ -391,6 +391,25 @@ for i_cluster = clusters_to_process
             mod_line = sprintf('Modulated: Yes %s', mod_mark);
         else
             mod_line = sprintf('Modulated: No %s', mod_mark);
+        end
+
+        % SC gate (2026-10-16): peak evoked rate and t-test modulation
+        % replace the FR, sparsity and bin-wise modulation criteria
+        if isfield(info, 'peak_evoked_rate') && ...
+                ~isempty(info.peak_evoked_rate)
+            ev_mark = check;
+            if ~info.passes_evoked_threshold
+                ev_mark = cross;
+            end
+            fr_line = sprintf('Peak evoked: %.1f sp/s (thresh: 5) %s', ...
+                info.peak_evoked_rate, ev_mark);
+            sparse_line = sprintf('Mean FR %.1f Hz | empty bins %.2f', ...
+                info.mean_firing_rate, info.proportion_empty_bins);
+            mod_mark = check;
+            if ~info.is_modulated_sc
+                mod_mark = cross;
+            end
+            mod_line = sprintf('Modulated (t-test): %s', mod_mark);
         end
 
         % Active period line

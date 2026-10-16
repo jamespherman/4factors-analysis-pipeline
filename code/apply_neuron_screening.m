@@ -451,12 +451,35 @@ if strcmp(brain_area, 'SC') && ~isempty(project_root)
         % than the earlier split where inclusion used the baseline-
         % deviation test in compute_task_modulation.
         selected_neurons = sc_selected(:);
+        % SC gate inputs (peak evoked rate, any significant test) from
+        % the screen_sc_neurons cache, for the record and the reason
+        fr_cache = session_data.cached_friedman_results;
+        sc_peak = fr_cache.peak_evoked_rate(:);
+        sc_mod = squeeze(any(any(fr_cache.sig_by_location | ...
+            fr_cache.suppression_by_location, 3), 2));
+        min_evoked = neuron_inclusion.min_evoked_rate_sc;
         for i = 1:nNeurons
             if i <= length(sc_selected)
+                screening_info(i).peak_evoked_rate = sc_peak(i);
+                screening_info(i).passes_evoked_threshold = ...
+                    sc_peak(i) >= min_evoked;
+                screening_info(i).is_modulated_sc = sc_mod(i);
                 screening_info(i).included = sc_selected(i);
                 if ~sc_selected(i)
+                    reasons = {};
+                    if sc_peak(i) < min_evoked
+                        reasons{end+1} = sprintf( ...
+                            'Peak evoked %.1f < %.0f sp/s', ...
+                            sc_peak(i), min_evoked); %#ok<AGROW>
+                    end
+                    if ~sc_mod(i)
+                        reasons{end+1} = 'No sig. modulation'; %#ok<AGROW>
+                    end
+                    if isempty(reasons)
+                        reasons = {'Not classic/interneuron'};
+                    end
                     screening_info(i).exclusion_reason = ...
-                        'Not classic/interneuron (screen_sc)';
+                        strjoin(reasons, ' & ');
                 else
                     screening_info(i).exclusion_reason = '';
                 end

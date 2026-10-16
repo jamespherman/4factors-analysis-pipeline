@@ -64,8 +64,24 @@ condition_defs.neuron_inclusion = struct(...
     'min_firing_rate_sc', 3.0, ...       % sp/s mean FR threshold for SC neurons (changed from 3.5)
     'min_firing_rate_snc', 1, ...        % sp/s mean FR threshold for SNc neurons
     'max_proportion_empty_bins', 0.8, ...% max fraction of 100ms bins with 0 spikes (changed from 0.7)
-    'consecutive_bins_required', 3 ...   % bins needed for modulation detection (changed from 2)
+    'consecutive_bins_required', 3, ...  % bins needed for modulation detection (changed from 2)
+    'min_evoked_rate_sc', 5.0, ...       % sp/s, SC gate (see below)
+    'sc_modulation_alpha', 0.05 ...      % family-wise alpha, SC gate
 );
+
+% SC inclusion gate (screen_sc_neurons; 2026-10-16). Replaces the mean
+% FR and sparsity tests for SC, which excluded neurons that are silent
+% between trials but respond strongly to task events. Both criteria use
+% successful gSac_4factors trials inside the neuron's stable period:
+%   1. Evoked rate: the trial-averaged rate in the visual, delay or
+%      saccade epoch at the best target location >= min_evoked_rate_sc.
+%   2. Modulation: paired t-test of epoch vs baseline rate per location
+%      x epoch, Bonferroni-corrected (sc_modulation_alpha / n tests).
+%      A t-test on the mean is used because the epochs differ in
+%      length; rank tests then flag unmodulated low-rate neurons
+%      (72-95% false positives in simulation at 0.5-5 sp/s, vs ~5%).
+% min_firing_rate_sc and max_proportion_empty_bins are still computed
+% and stored for SC, but no longer gate inclusion.
 
 % Stability detection (detect_stable_trial_period, apply_neuron_screening).
 % Each neuron's stable period is the longest run of stable firing across

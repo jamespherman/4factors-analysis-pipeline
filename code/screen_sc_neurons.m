@@ -7,26 +7,33 @@ function [selected_neurons, sig_epoch_comparison, ...
 %
 % This function implements a three-tier classification system for SC neurons:
 %
+% Significance and rates use successful gSac_4factors trials inside
+% each neuron's stable period. Modulation = paired t-test of epoch vs
+% baseline rate per location x epoch, Bonferroni-corrected (see
+% define_task_conditions, SC inclusion gate).
+%
 % CLASSIC SC NEURON (all must be true):
 %   (a) Significant increase in visual OR delay OR saccade epoch vs baseline
 %       for at least one contralateral location
-%   (b) Mean FR > 3.0 sp/s
+%   (b) Peak evoked rate >= min_evoked_rate_sc (5 sp/s): trial-averaged
+%       visual, delay or saccade rate at the best location
 %   (c) NOT significantly activated at opposing locations (180 deg apart)
 %       during Visual OR Saccade epochs (delay activity is not considered)
 %   (d) NO significant suppression (decrease vs baseline) at contralateral locations
-%   (e) Not sparse (<=80% of 100ms bins empty across session)
 %
 % PUTATIVE INTERNEURON:
-%   - Mean FR > 3.0 sp/s
+%   - Peak evoked rate >= min_evoked_rate_sc
 %   - Task-modulated (activation or suppression somewhere)
 %   - Has EITHER:
 %     * Opposing activation (Visual/Saccade only, 180 deg apart), OR
 %     * Significant suppression at contralateral locations
 %
 % EXCLUDED:
-%   - Mean FR <= 3.0 sp/s
+%   - Peak evoked rate < min_evoked_rate_sc
 %   - Not task-modulated
-%   - Sparse (>80% of 100ms bins empty)
+%
+% Mean FR and sparsity are still computed (stable period) but no
+% longer gate inclusion (changed 2026-10-16).
 %
 % INPUTS:
 %   session_data   - A struct containing session-specific data, conforming to the
@@ -110,8 +117,25 @@ neuron_class_v2 = repmat({'excluded'}, ...
     nClusters, 1);
 
 % Classification thresholds
+% Mean FR and sparsity: reported only, no longer gate inclusion
 MIN_FR_THRESHOLD = 3.0;  % sp/s - minimum mean firing rate (changed from 3.5)
 MAX_SPARSE_FRACTION = 0.80;  % Maximum fraction of empty 100ms bins (changed from 0.70)
+
+% Inclusion gate (define_task_conditions.neuron_inclusion)
+MIN_EVOKED_RATE = 5.0;
+MOD_ALPHA = 0.05;
+if nargin >= 3 && ~isempty(condition_defs) && ...
+        isfield(condition_defs, 'neuron_inclusion')
+    ni = condition_defs.neuron_inclusion;
+    if isfield(ni, 'min_evoked_rate_sc')
+        MIN_EVOKED_RATE = ni.min_evoked_rate_sc;
+    end
+    if isfield(ni, 'sc_modulation_alpha')
+        MOD_ALPHA = ni.sc_modulation_alpha;
+    end
+end
+% Cached test results are reused only if computed by this method
+TEST_METHOD = 'paired_ttest_stable4f_v1';
 
 if nClusters == 0
     fprintf('WARNING in screen_sc_neurons: No clusters found.\n');
@@ -472,31 +496,62 @@ group_mean_frs = cell(1, n_groups);
 for i_group = 1:n_groups
     group_mean_frs{i_group} = nan(nClusters, nEpochs);
 end
+% Peak evoked rate: best 4factors location, visual/delay/saccade epoch
+peak_evoked_rate = zeros(nClusters, 1);
+n_4f_groups = n_locations;
 
-%% Check for cached Friedman test results
+% Per-neuron trial mask over all_memSac_trials: 4factors trials inside
+% the neuron's stable period (all 4factors trials if it has none).
+% Stable periods are scoped to gSac_4factors, so gSac_jph trials
+% outside them drop out of the tests.
+stable_ranges = nan(nClusters, 2);
+neuron_trial_ok = repmat(is_4factors_trial(:)', nClusters, 1);
+if use_stable_periods
+    for i_cluster = 1:min(nClusters, length(stability_info))
+        si_c = stability_info(i_cluster);
+        if isfield(si_c, 'is_stable') && si_c.is_stable && ...
+                ~isnan(si_c.stable_trial_start)
+            stable_ranges(i_cluster, :) = ...
+                [si_c.stable_trial_start, si_c.stable_trial_end];
+            neuron_trial_ok(i_cluster, :) = ...
+                all_memSac_trials(:)' >= si_c.stable_trial_start & ...
+                all_memSac_trials(:)' <= si_c.stable_trial_end;
+        end
+    end
+end
+
+%% Check for cached test results
+% Reused only if computed by the same method on the same stable periods
 use_cached_friedman = false;
 if isfield(session_data, 'cached_friedman_results') && ...
         ~isempty(session_data.cached_friedman_results)
     cached = session_data.cached_friedman_results;
-    % Validate: same clusters, same order, same number of groups, and has suppression data
     if isequal(cached.cluster_ids(:), cluster_ids(:)) && ...
             size(cached.sig_by_location, 2) == n_groups && ...
-            isfield(cached, 'suppression_by_location')
+            isfield(cached, 'suppression_by_location') && ...
+            isfield(cached, 'method') && ...
+            strcmp(cached.method, TEST_METHOD) && ...
+            isequaln(cached.stable_ranges, stable_ranges)
         use_cached_friedman = true;
-        fprintf('screen_sc_neurons: Using cached Friedman test results.\n');
+        fprintf('screen_sc_neurons: Using cached test results.\n');
         sig_by_location = cached.sig_by_location;
         suppression_by_location = cached.suppression_by_location;
         group_mean_frs = cached.group_mean_frs;
+        peak_evoked_rate = cached.peak_evoked_rate;
     else
-        fprintf('screen_sc_neurons: Cached Friedman results invalid (cluster/group mismatch or missing suppression data), recomputing...\n');
+        fprintf(['screen_sc_neurons: Cached test results stale ' ...
+            '(method, clusters or stable periods changed), ' ...
+            'recomputing...\n']);
     end
 end
 
 if ~use_cached_friedman
-% Test each neuron at each location
+% Bonferroni over every location x epoch test
+alpha_corr = MOD_ALPHA / (3 * n_groups);
 for i_cluster = 1:nClusters
     for i_group = 1:n_groups
-        trial_mask = trial_groups{i_group};
+        trial_mask = trial_groups{i_group}(:)' & ...
+            neuron_trial_ok(i_cluster, :);
 
         if sum(trial_mask) < 2
             continue;
@@ -506,39 +561,34 @@ for i_cluster = 1:nClusters
         neuron_frs_all_trials = squeeze(epoch_frs(i_cluster, :, trial_mask))';
         neuron_frs = neuron_frs_all_trials(~any(isnan(neuron_frs_all_trials), 2), :);
 
-        if size(neuron_frs, 1) < 2
+        if size(neuron_frs, 1) < 5
             continue;
         end
 
         mean_fr_this_group = mean(neuron_frs, 1, 'omitnan');
         group_mean_frs{i_group}(i_cluster, :) = mean_fr_this_group;
+        if i_group <= n_4f_groups
+            peak_evoked_rate(i_cluster) = max(peak_evoked_rate( ...
+                i_cluster), max(mean_fr_this_group(2:4)));
+        end
 
-        try
-            [p_friedman, ~] = friedman(neuron_frs, 1, 'off');
-            if p_friedman < 0.05
-                alpha_corr = 0.05 / 3;
-                comparisons = [1 2; 1 3; 1 4]; % Bsl vs Vis, Del, Sac
-
-                for i_comp = 1:size(comparisons, 1)
-                    p = ranksum(neuron_frs(:, comparisons(i_comp, 1)), ...
-                        neuron_frs(:, comparisons(i_comp, 2)));
-                    epoch_mean = mean(neuron_frs(:, comparisons(i_comp, 2)));
-                    baseline_mean = mean(neuron_frs(:, comparisons(i_comp, 1)));
-
-                    if p < alpha_corr
-                        % Significant INCREASE vs baseline
-                        if epoch_mean > baseline_mean
-                            sig_by_location(i_cluster, i_group, i_comp) = true;
-                        % Significant DECREASE (suppression) vs baseline
-                        elseif epoch_mean < baseline_mean
-                            suppression_by_location(i_cluster, i_group, i_comp) = true;
-                        end
-                    end
+        % Paired t-test of each epoch vs baseline (Vis, Del, Sac). The
+        % epochs differ in length, so a test of the mean is used; rank
+        % tests flag unmodulated low-rate neurons in that case.
+        for i_comp = 1:3
+            d = neuron_frs(:, i_comp + 1) - neuron_frs(:, 1);
+            if all(d == 0), continue; end
+            [~, p] = ttest(d);
+            if p < alpha_corr
+                if mean(d) > 0
+                    % Significant INCREASE vs baseline
+                    sig_by_location(i_cluster, i_group, i_comp) = true;
+                else
+                    % Significant DECREASE (suppression) vs baseline
+                    suppression_by_location(i_cluster, i_group, ...
+                        i_comp) = true;
                 end
             end
-        catch ME
-            fprintf('Stat test failed for cluster %d, group %d: %s\n', ...
-                cluster_ids(i_cluster), i_group, ME.message);
         end
     end
 end
@@ -551,15 +601,17 @@ end
         'group_mean_frs', {group_mean_frs}, ...
         'location_angles', location_angles, ...
         'epoch_frs', epoch_frs, ...
+        'peak_evoked_rate', peak_evoked_rate, ...
+        'method', TEST_METHOD, ...
+        'stable_ranges', stable_ranges, ...
         'computation_date', datestr(now));
-    fprintf('screen_sc_neurons: Friedman test results cached for future runs.\n');
+    fprintf('screen_sc_neurons: Test results cached for future runs.\n');
 end  % end of if ~use_cached_friedman
 
 % Now classify each neuron
 for i_cluster = 1:nClusters
-    % Check basic criteria
-    is_sparse = sparse_fraction(i_cluster) > MAX_SPARSE_FRACTION;
-    has_min_fr = mean_fr_session(i_cluster) > MIN_FR_THRESHOLD;
+    % Evoked-rate criterion (mean FR and sparsity no longer gate)
+    has_evoked = peak_evoked_rate(i_cluster) >= MIN_EVOKED_RATE;
 
     % Determine if neuron is task-modulated at any location (activation or suppression)
     is_task_modulated = any(sig_by_location(i_cluster, :, :), 'all') || ...
@@ -620,17 +672,17 @@ for i_cluster = 1:nClusters
     % INTERNEURON criteria: opposing activation (vis/sac only) OR contralateral suppression
     is_interneuron_pattern = has_opposing_activation || has_contralateral_suppression;
 
-    if ~has_min_fr || is_sparse || ~is_task_modulated
-        % EXCLUDED: low FR, sparse, or not task-modulated
+    if ~has_evoked || ~is_task_modulated
+        % EXCLUDED: weak evoked response or not task-modulated
         neuron_class{i_cluster} = 'excluded';
         selected_neurons(i_cluster) = false;
-    elseif has_contralateral_activation && ~is_interneuron_pattern && ~is_sparse
-        % CLASSIC: contralateral activation, no interneuron patterns, not sparse
+    elseif has_contralateral_activation && ~is_interneuron_pattern
+        % CLASSIC: contralateral activation, no interneuron patterns
         neuron_class{i_cluster} = 'classic';
         selected_neurons(i_cluster) = true;
     else
-        % INTERNEURON: FR > threshold, task-modulated, but has interneuron patterns
-        % or lacks contralateral activation
+        % INTERNEURON: evoked response, task-modulated, but has
+        % interneuron patterns or lacks contralateral activation
         neuron_class{i_cluster} = 'interneuron';
         selected_neurons(i_cluster) = true;
     end
