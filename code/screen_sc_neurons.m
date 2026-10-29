@@ -17,16 +17,19 @@ function [selected_neurons, sig_epoch_comparison, ...
 %       for at least one contralateral location
 %   (b) Peak evoked rate >= min_evoked_rate_sc (5 sp/s): trial-averaged
 %       visual, delay or saccade rate at the best location
-%   (c) NOT significantly activated at opposing locations (180 deg apart)
-%       during Visual OR Saccade epochs (delay activity is not considered)
-%   (d) NO significant suppression (decrease vs baseline) at contralateral locations
+%   (c) Every significant ipsilateral activation (any epoch) is
+%       reliably less than half of contra: the best contralateral
+%       location's per-trial response in that epoch is significantly
+%       larger than twice the ipsilateral one (Welch, one-sided, 0.05)
+%   (d) NO significant suppression (any location) in the visual or
+%       saccade epoch; delay suppression (mostly ramp-down) is exempt
+%   (Rule decided 2026-10-28, shared SC spec section 6; replaces the
+%   opposing-location and contralateral-suppression criteria.)
 %
-% PUTATIVE INTERNEURON:
+% PUTATIVE INTERNEURON (non-classic):
 %   - Peak evoked rate >= min_evoked_rate_sc
 %   - Task-modulated (activation or suppression somewhere)
-%   - Has EITHER:
-%     * Opposing activation (Visual/Saccade only, 180 deg apart), OR
-%     * Significant suppression at contralateral locations
+%   - Fails (a), (c) or (d)
 %
 % EXCLUDED:
 %   - Peak evoked rate < min_evoked_rate_sc
@@ -134,6 +137,9 @@ if nargin >= 3 && ~isempty(condition_defs) && ...
         MOD_ALPHA = ni.sc_modulation_alpha;
     end
 end
+% Classic vs interneuron: one-sided Welch alpha of the test that the
+% contralateral response exceeds twice an ipsilateral activation
+IPSI_ALPHA = 0.05;
 % Cached test results are reused only if computed by this method
 TEST_METHOD = 'paired_ttest_stable4f_v1';
 
@@ -641,48 +647,68 @@ for i_cluster = 1:nClusters
         end
     end
 
-    % Check for opposing location activation (180 deg apart)
-    % Only consider Visual and Saccade epochs (not Delay)
-    has_opposing_activation = false;
-    for i = 1:length(activated_locations_vis_sac)
-        for j = (i+1):length(activated_locations_vis_sac)
-            angle_diff = abs(activated_locations_vis_sac(i) - activated_locations_vis_sac(j));
-            % Check if locations are approximately 180 deg apart
-            if abs(angle_diff - 180) < 30 || abs(angle_diff - 180 + 360) < 30
-                has_opposing_activation = true;
-                break;
+    % Ipsilateral activation, rule C with a half-of-contra null (shared
+    % SC spec section 6; decided 2026-10-28). An ipsilateral activation
+    % (any epoch) makes the neuron non-classic unless, in the same
+    % epoch, the best contralateral location's per-trial response
+    % (epoch - baseline) is significantly larger than TWICE the
+    % ipsilateral one (Welch, one-sided, IPSI_ALPHA), i.e. the ipsi
+    % response is reliably less than half of contra. Plain significance
+    % (rule A) depends on trial count: with ~300 trials per location,
+    % responses at a fraction of contra become significant.
+    has_ipsi_activation = false;
+    resp = squeeze(epoch_frs(i_cluster, 2:4, :))' - ...
+        squeeze(epoch_frs(i_cluster, 1, :));
+    con_groups = find(arrayfun(is_contralateral, ...
+        location_angles(1:n_4f_groups)));
+    for i_group = 1:n_4f_groups
+        if is_contralateral(location_angles(i_group))
+            continue;
+        end
+        for i_ep = find(squeeze(sig_by_location(i_cluster, i_group, ...
+                :)))'
+            ip = resp(trial_groups{i_group}(:) & ...
+                neuron_trial_ok(i_cluster, :)', i_ep);
+            ip = ip(~isnan(ip));
+            best_p = 1;
+            for i_con = con_groups
+                cp = resp(trial_groups{i_con}(:) & ...
+                    neuron_trial_ok(i_cluster, :)', i_ep);
+                cp = cp(~isnan(cp));
+                if numel(cp) < 3 || numel(ip) < 3, continue; end
+                [~, p] = ttest2(cp, 2 * ip, 'Vartype', 'unequal', ...
+                    'Tail', 'right');
+                best_p = min(best_p, p);
+            end
+            if best_p >= IPSI_ALPHA
+                has_ipsi_activation = true;
             end
         end
-        if has_opposing_activation; break; end
     end
 
-    % Check for contralateral suppression (significant decrease at contralateral locations)
-    has_contralateral_suppression = false;
-    for i_group = 1:n_groups
-        if any(suppression_by_location(i_cluster, i_group, :))
-            theta = location_angles(i_group);
-            if is_contralateral(theta)
-                has_contralateral_suppression = true;
-                break;
-            end
-        end
-    end
+    % Suppression (any location) in the visual or saccade epoch. Delay
+    % suppression is exempt: against the pre-target baseline it is
+    % mostly a delay ramp-down, which James counts as classic (Newton
+    % precedent, 2026-10-21).
+    has_suppression = any(suppression_by_location(i_cluster, ...
+        1:n_4f_groups, [1 3]), 'all');
 
     % Apply classification logic
-    % INTERNEURON criteria: opposing activation (vis/sac only) OR contralateral suppression
-    is_interneuron_pattern = has_opposing_activation || has_contralateral_suppression;
+    is_interneuron_pattern = has_ipsi_activation || has_suppression;
 
     if ~has_evoked || ~is_task_modulated
         % EXCLUDED: weak evoked response or not task-modulated
         neuron_class{i_cluster} = 'excluded';
         selected_neurons(i_cluster) = false;
     elseif has_contralateral_activation && ~is_interneuron_pattern
-        % CLASSIC: contralateral activation, no interneuron patterns
+        % CLASSIC: contralateral activation, no counted ipsilateral
+        % activation, no visual/saccade suppression
         neuron_class{i_cluster} = 'classic';
         selected_neurons(i_cluster) = true;
     else
-        % INTERNEURON: evoked response, task-modulated, but has
-        % interneuron patterns or lacks contralateral activation
+        % INTERNEURON (non-classic): evoked response, task-modulated,
+        % but ipsilateral activation, suppression, or no contralateral
+        % activation
         neuron_class{i_cluster} = 'interneuron';
         selected_neurons(i_cluster) = true;
     end
@@ -703,9 +729,9 @@ end
 % of individual neuron summary PDFs.
 %
 % Format: {session_name, cluster_id, forced_class, reason}
-manual_overrides = {
-    'Newton_08_14_2025_SC', 6, 'classic', 'Weak ipsilateral responses falsely trigger opposing activation'
-};
+% (N14 cl 6 was forced to classic here; James judged it non-classic on
+% 2026-10-23, which the 2026-10-28 rule gives without an override.)
+manual_overrides = cell(0, 4);
 
 for i_override = 1:size(manual_overrides, 1)
     override_session = manual_overrides{i_override, 1};

@@ -7,7 +7,9 @@ function [selected_neurons, screening_info, neuron_class] = screen_snc_neurons(s
 %   (a) Significant change in activity (increase or decrease) for at least
 %       3 consecutive samples at ANY of: fixation onset, target onset,
 %       fixation offset, peri-saccade, or reward delivery. Significance is
-%       determined by arrayROC bootstrap CI (95%) excluding 0.5.
+%       from compute_task_modulation: each neuron against its own
+%       random-time null, family-wise over events x locations
+%       (modulation_alpha); see define_task_conditions.
 %   (b) Mean FR > 1 sp/s (computed over active period)
 %   (c) Not sparse (<=80% of 100ms bins empty across active period)
 %

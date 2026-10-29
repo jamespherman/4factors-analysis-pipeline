@@ -66,8 +66,29 @@ condition_defs.neuron_inclusion = struct(...
     'max_proportion_empty_bins', 0.8, ...% max fraction of 100ms bins with 0 spikes (changed from 0.7)
     'consecutive_bins_required', 3, ...  % bins needed for modulation detection (changed from 2)
     'min_evoked_rate_sc', 5.0, ...       % sp/s, SC gate (see below)
-    'sc_modulation_alpha', 0.05 ...      % family-wise alpha, SC gate
+    'sc_modulation_alpha', 0.05, ...     % family-wise alpha, SC gate
+    'modulation_test', 'random_time', ...% compute_task_modulation test
+    'modulation_n_perm', 1000, ...       % permutations per neuron
+    'modulation_alpha', 0.05 ...         % family-wise alpha per neuron
 );
+
+% Bin-wise modulation test (compute_task_modulation; gates SNc, and is
+% the "Bin-wise" line and PSTH markers in SC summary PDFs). Same
+% statistic as the original (ROC area of each 25 ms test bin vs pooled
+% baseline, consecutive_bins_required bins in the same direction);
+% significance comes from each neuron's own null distribution:
+%   'random_time' (2026-10-28, shared SC spec section 4): the neuron's
+%       trials moved to random times within +-5 min (same trial count
+%       and event geometry, the neuron's own burst structure, no task
+%       events); family-wise over events x locations x directions by
+%       max-T, each test scaled by its null 99th percentile.
+%       modulation_n_perm = number of random-time pseudo-blocks.
+%   'permutation' (2026-10-17): bins permuted within trials; breaks
+%       burst structure, so its null is too narrow for bursty neurons.
+%   'bootstrap_ci' (original): arrayROC 95% CI per bin, uncorrected
+%       over ~20 event x location blocks x many bins; flagged most
+%       unmodulated neurons below ~2 sp/s, where most bins hold 0
+%       spikes.
 
 % SC inclusion gate (screen_sc_neurons; 2026-10-16). Replaces the mean
 % FR and sparsity tests for SC, which excluded neurons that are silent

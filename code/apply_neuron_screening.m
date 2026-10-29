@@ -309,13 +309,25 @@ fprintf('apply_neuron_screening: %d/%d neurons (%.1f%%) used stable period (vs a
 %   1. session_data.cached_modulation_info exists
 %   2. It has the same number of neurons as current cluster_ids
 %   3. The cluster_ids match (same neurons, same order)
+%   4. It was computed with the current modulation_test
 use_cached = false;
 if isfield(session_data, 'cached_modulation_info') && ~isempty(session_data.cached_modulation_info)
     cached = session_data.cached_modulation_info;
     if length(cached) == nNeurons
         % Check if cluster_ids match
         cached_ids = [cached.cluster_id];
-        if isequal(cached_ids(:), cluster_ids(:))
+        % The cache must also come from the current modulation test
+        current_method = 'random_time';
+        if isfield(condition_defs.neuron_inclusion, 'modulation_test')
+            current_method = ...
+                condition_defs.neuron_inclusion.modulation_test;
+        end
+        same_method = isfield(cached, 'method') && ...
+            strcmp(cached(1).method, current_method);
+        if ~same_method
+            fprintf(['apply_neuron_screening: Cached modulation_info ' ...
+                'is from another test, recomputing...\n']);
+        elseif isequal(cached_ids(:), cluster_ids(:))
             use_cached = true;
             fprintf('apply_neuron_screening: Using cached modulation_info (skipping recomputation).\n');
         else
